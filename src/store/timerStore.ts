@@ -151,7 +151,7 @@ export const useTimerStore = create<TimerStore>()(
       },
 
       checkTimerState: () => {
-        const { state, sessionEndTime, duration, activeTask, lastResumeTime, accumulatedMs } = get();
+        const { state, sessionEndTime, duration, lastResumeTime, accumulatedMs } = get();
         if (state === 'running' && sessionEndTime && Date.now() >= sessionEndTime) {
           stopAlarmLoop();
           set({ 
