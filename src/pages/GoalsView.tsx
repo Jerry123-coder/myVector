@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
-import { Zap, ChevronRight, Target, Map } from 'lucide-react';
+import { Zap, ChevronRight, Target, Map, type LucideIcon } from 'lucide-react';
 import { TodayTab }      from './goals/TodayTab';
 import { SprintTab }     from './goals/SprintTab';
 import { GoalsTab }      from './goals/GoalsTab';
@@ -9,7 +9,7 @@ import { MilestonesTab } from './goals/MilestonesTab';
 
 type Tab = 'today' | 'sprint' | 'goals' | 'milestones';
 
-const TABS: { id: Tab; icon: React.FC<any>; label: string }[] = [
+const TABS: { id: Tab; icon: LucideIcon; label: string }[] = [
   { id: 'today',      icon: Zap,          label: 'Today'      },
   { id: 'sprint',     icon: ChevronRight,  label: 'Sprint'     },
   { id: 'goals',      icon: Target,        label: 'Goals'      },

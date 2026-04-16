@@ -9,6 +9,8 @@ export interface FocusSession {
   taskId?: number;
   taskLabel: string;
   completedAt: number;
+  updatedAt: number;
+  userId?: string;
 }
 
 export interface AnnualGoal {
@@ -19,6 +21,8 @@ export interface AnnualGoal {
   status: 'active' | 'done' | 'at-risk';
   targetDate?: number;
   createdAt: number;
+  updatedAt: number;
+  userId?: string;
 }
 
 export interface QuarterlyGoal {
@@ -30,6 +34,8 @@ export interface QuarterlyGoal {
   status: 'active' | 'done' | 'at-risk';
   targetDate?: number;
   createdAt: number;
+  updatedAt: number;
+  userId?: string;
 }
 
 export interface Sprint {
@@ -41,6 +47,8 @@ export interface Sprint {
   endDate: number;
   status: 'planned' | 'active' | 'done';
   createdAt: number;
+  updatedAt: number;
+  userId?: string;
 }
 
 export interface Task {
@@ -54,6 +62,8 @@ export interface Task {
   annualGoalId?: number;
   createdAt: number;
   completedAt?: number;
+  updatedAt: number;
+  userId?: string;
 }
 
 export interface Milestone {
@@ -65,6 +75,8 @@ export interface Milestone {
   sprintId?: number;
   status: 'upcoming' | 'done' | 'at-risk';
   createdAt: number;
+  updatedAt: number;
+  userId?: string;
 }
 
 export interface DailyTask {
@@ -74,6 +86,8 @@ export interface DailyTask {
   taskId?: number;
   done: boolean;
   order: number;
+  updatedAt: number;
+  userId?: string;
 }
 
 class VectorDB extends Dexie {
@@ -105,20 +119,24 @@ class VectorDB extends Dexie {
 
     // v3: adds annualGoals, renames goalId→quarterlyGoalId, adds annualGoalId refs
     this.version(3).stores({
-      sessions:       '++id, completedAt, taskId',
-      annualGoals:    '++id, status, year',
-      quarterlyGoals: '++id, status, annualGoalId',
-      sprints:        '++id, quarterlyGoalId, annualGoalId, status, startDate',
-      tasks:          '++id, status, priority, sprintId, quarterlyGoalId, annualGoalId, createdAt',
-      milestones:     '++id, annualGoalId, quarterlyGoalId, sprintId, status, targetDate',
-      dailyTasks:     '++id, date, order',
-    }).upgrade(tx => {
-      // Migrate old goalId → quarterlyGoalId in sprints
-      return tx.table('sprints').toCollection().modify((sprint: any) => {
-        if (sprint.goalId !== undefined && sprint.quarterlyGoalId === undefined) {
-          sprint.quarterlyGoalId = sprint.goalId;
-        }
-      });
+      sessions:       '++id, completedAt, taskId, updatedAt, userId',
+      annualGoals:    '++id, status, year, updatedAt, userId',
+      quarterlyGoals: '++id, status, annualGoalId, updatedAt, userId',
+      sprints:        '++id, quarterlyGoalId, annualGoalId, status, startDate, updatedAt, userId',
+      tasks:          '++id, status, priority, sprintId, quarterlyGoalId, annualGoalId, createdAt, updatedAt, userId',
+      milestones:     '++id, annualGoalId, quarterlyGoalId, sprintId, status, targetDate, updatedAt, userId',
+      dailyTasks:     '++id, date, order, updatedAt, userId',
+    });
+
+    // Version 4: Adds sync-related middleware triggers (conceptual)
+    this.version(4).stores({
+      sessions:       '++id, completedAt, taskId, updatedAt, userId',
+      annualGoals:    '++id, status, year, updatedAt, userId',
+      quarterlyGoals: '++id, status, annualGoalId, updatedAt, userId',
+      sprints:        '++id, quarterlyGoalId, annualGoalId, status, startDate, updatedAt, userId',
+      tasks:          '++id, status, priority, sprintId, quarterlyGoalId, annualGoalId, createdAt, updatedAt, userId',
+      milestones:     '++id, annualGoalId, quarterlyGoalId, sprintId, status, targetDate, updatedAt, userId',
+      dailyTasks:     '++id, date, order, updatedAt, userId',
     });
   }
 }

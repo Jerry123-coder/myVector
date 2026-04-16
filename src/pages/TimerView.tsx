@@ -1,62 +1,134 @@
 import { useEffect, useState } from 'react';
-import { Lock, Zap, ChevronDown, X, Plus, Edit3 } from 'lucide-react';
+import { Lock, Zap, ChevronDown, X, Plus, Edit3, Activity, Timer, Coffee, Play, Square, Pause, SkipForward, ArrowUp, ArrowDown, Settings2, Trash2 } from 'lucide-react';
+import { MetricsView } from './MetricsView';
 import { useTimerStore } from '../store/timerStore';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
 
-const PRESETS = [
-  { label: 'Focus',  mins: 30, desc: 'Default' },
-  { label: 'Deep',   mins: 60, desc: 'Extended' },
-  { label: 'Macro',  mins: 90, desc: 'Flow state' },
+type BlockType = 'focus' | 'break';
+
+interface FlowBlock {
+  type: BlockType;
+  mins: number;
+  label: string;
+}
+
+interface FlowBlockBuilder {
+  type: BlockType;
+  mins: string | number; // Allow empty string for ease of typing
+  label: string;
+}
+
+interface FlowTemplate {
+  id: string;
+  label: string;
+  desc: string;
+  blocks: FlowBlock[];
+}
+
+const TEMPLATES: FlowTemplate[] = [
+  {
+    id: 'single',
+    label: 'Single Focus',
+    desc: 'Standard focus block',
+    blocks: [{ type: 'focus', mins: 30, label: 'Focus Block' }]
+  },
+  {
+    id: 'pomodoro',
+    label: 'Pomodoro Protocol',
+    desc: '25m Focus / 5m Break',
+    blocks: [
+      { type: 'focus', mins: 25, label: 'Focus Block' },
+      { type: 'break', mins: 5, label: 'Short Break' }
+    ]
+  },
+  {
+    id: 'deep-work',
+    label: 'Deep Work Protocol',
+    desc: '90m Focus / 15m Break / 45m Focus',
+    blocks: [
+      { type: 'focus', mins: 90, label: 'Deep Focus I' },
+      { type: 'break', mins: 15, label: 'System Recovery' },
+      { type: 'focus', mins: 45, label: 'Deep Focus II' }
+    ]
+  }
 ];
 
 export const TimerView = () => {
+  const [activeTab, setActiveTab] = useState<'engine' | 'velocity'>('engine');
+  
+  // Persisted Custom Templates
+  const [userTemplates, setUserTemplates] = useState<FlowTemplate[]>(() => {
+    const saved = localStorage.getItem('vector-user-templates');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [recentMins, setRecentMins] = useState<number[]>(() => {
+    const saved = localStorage.getItem('vector-recent-mins');
+    return saved ? JSON.parse(saved) : [15, 30, 45, 60];
+  });
+
+  const ALL_TEMPLATES = [...TEMPLATES, ...userTemplates];
+
+  // Flow State
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('single');
+  const [currentBlockIndex, setCurrentBlockIndex] = useState(0);
+  const [showFlows, setShowFlows] = useState(false);
+  
+  const selectedTemplate = ALL_TEMPLATES.find(t => t.id === selectedTemplateId) || ALL_TEMPLATES[0];
+  const currentBlock = selectedTemplate.blocks[currentBlockIndex] || selectedTemplate.blocks[0];
+
   const {
     state, duration, sessionEndTime,
     startTimer, checkTimerState, resetTimer, endTimer, pauseTimer, resumeTimer,
     activeTask, setActiveTask,
   } = useTimerStore();
 
-  const [timeLeft, setTimeLeft]         = useState(duration);
-  const [selectedMins, setSelectedMins] = useState(30);
-  const [customMins, setCustomMins]     = useState('');
-  const [showCustom, setShowCustom]     = useState(false);
-  const [lockIn, setLockIn]             = useState(false);
-  const [showTaskPicker, setShowTaskPicker] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(duration);
+  
+  // Custom Time Input
+  const [customMins, setCustomMins] = useState('');
+  const [showCustom, setShowCustom] = useState(false);
+  
+  // Builder & Manager State
+  const [isBuildingProtocol, setIsBuildingProtocol] = useState(false);
+  const [isManagingProtocols, setIsManagingProtocols] = useState(false);
+  const [builderTitle, setBuilderTitle] = useState('');
+  const [builderBlocks, setBuilderBlocks] = useState<FlowBlockBuilder[]>([]);
+
+  const [lockIn, setLockIn] = useState(false);
   const [newTaskLabel, setNewTaskLabel] = useState('');
+  const [showTaskPicker, setShowTaskPicker] = useState(false);
 
   const pendingTasks = useLiveQuery(
     () => db.tasks.where('status').anyOf(['pending','active']).reverse().sortBy('createdAt'),
     []
   );
 
-  /* ── Countdown sync ── */
   useEffect(() => {
     const iv = setInterval(() => {
       if (state === 'running' && sessionEndTime) {
         checkTimerState();
         setTimeLeft(Math.max(0, Math.ceil((sessionEndTime - Date.now()) / 1000)));
       } else if (state === 'idle') {
-        setTimeLeft(selectedMins * 60);
+        setTimeLeft(currentBlock.mins * 60);
       } else if (state === 'completed' || state === 'ringing') {
         setTimeLeft(0);
-      } else if (state === 'paused') {
-        // Just maintain current timeLeft
       }
     }, 250);
     return () => clearInterval(iv);
-  }, [state, sessionEndTime, selectedMins, checkTimerState]);
+  }, [state, sessionEndTime, currentBlock.mins, checkTimerState]);
 
   const absTime = Math.max(0, Math.abs(timeLeft));
   const m = Math.floor(absTime / 60).toString().padStart(2,'0');
   const s = (absTime % 60).toString().padStart(2,'0');
 
-  const totalDuration = (state === 'running' || state === 'completed') ? duration : selectedMins * 60;
+  const totalDuration = (state === 'running' || state === 'completed' || state === 'ringing') ? duration : currentBlock.mins * 60;
   const progress = totalDuration > 0
     ? (state === 'completed' ? 1 : Math.max(0, Math.min(1, (totalDuration - timeLeft) / totalDuration)))
     : 0;
 
-  const R    = 44;
+  const R = 44;
   const circ = 2 * Math.PI * R;
   const dashOffset = circ * (1 - progress);
 
@@ -65,22 +137,110 @@ export const TimerView = () => {
   const isRinging   = state === 'ringing';
   const isCompleted = state === 'completed';
 
-  const handleStart = () => { if (state === 'idle' || state === 'completed') startTimer(selectedMins * 60); };
-  const handleReset = () => { resetTimer(); setTimeLeft(selectedMins * 60); };
-  const handleEnd   = () => { endTimer(); setTimeLeft(0); };
+  const isBreak = currentBlock.type === 'break';
+  const themeColor = isBreak ? '#00e475' : '#00dbe9';
+  const themeColorRgb = isBreak ? '0,228,117' : '0,219,233';
+
+  const executeEnd = () => {
+    endTimer();
+    setTimeLeft(0);
+  };
+
+  const executeStart = (overrideMins?: number) => {
+    const m = overrideMins || currentBlock.mins;
+    if (state === 'idle' || state === 'completed') {
+      startTimer(m * 60);
+      // Auto-label break blocks so it doesn't log standard focus
+      if (isBreak) {
+        setActiveTask({ label: currentBlock.label });
+      } else if (activeTask.label === 'System Recovery' || activeTask.label === 'Short Break') {
+        setActiveTask({ label: 'General Focus' }); // auto restore if finishing a break
+      }
+    }
+  };
+
+  const handleNextBlock = () => {
+    if (isRinging || isRunning) executeEnd();
+    
+    if (currentBlockIndex + 1 < selectedTemplate.blocks.length) {
+      setCurrentBlockIndex(currentBlockIndex + 1);
+      resetTimer();
+    } else {
+      resetTimer();
+      setCurrentBlockIndex(0);
+    }
+  };
+
+  const handleManualReset = () => {
+    resetTimer();
+    setCurrentBlockIndex(0);
+    setTimeLeft(currentBlock.mins * 60);
+  };
 
   const applyCustom = () => {
     const v = parseInt(customMins);
     if (v > 0 && v <= 480) {
-      setSelectedMins(v);
+      const newMins = [v, ...recentMins.filter(m => m !== v)].slice(0, 4);
+      setRecentMins(newMins);
+      localStorage.setItem('vector-recent-mins', JSON.stringify(newMins));
+      
+      setSelectedTemplateId('single');
+      TEMPLATES[0].blocks[0].mins = v;
+      setCurrentBlockIndex(0);
       setShowCustom(false);
       setCustomMins('');
     }
   };
 
-  const selectPreset = (mins: number) => {
-    setSelectedMins(mins);
-    setShowCustom(false);
+  // Protocols Management Functions
+  const saveProtocol = () => {
+    if (builderBlocks.length === 0) return;
+    const finalBlocks: FlowBlock[] = builderBlocks.map(b => ({
+       type: b.type,
+       label: b.label,
+       mins: typeof b.mins === 'number' ? b.mins : (parseInt(b.mins) || 1)
+    }));
+
+    const newTemplate: FlowTemplate = {
+      id: `custom-${Date.now()}`,
+      label: builderTitle.trim() === '' ? 'Untitled Protocol' : builderTitle,
+      desc: 'User Protocol',
+      blocks: finalBlocks
+    };
+    const updated = [...userTemplates, newTemplate];
+    setUserTemplates(updated);
+    localStorage.setItem('vector-user-templates', JSON.stringify(updated));
+    setSelectedTemplateId(newTemplate.id);
+    setCurrentBlockIndex(0);
+    setIsBuildingProtocol(false);
+  };
+
+  const moveUserTemplate = (index: number, direction: 'up' | 'down') => {
+    if (direction === 'up' && index === 0) return;
+    if (direction === 'down' && index === userTemplates.length - 1) return;
+    const items = [...userTemplates];
+    const swap = items[index];
+    items[index] = items[index + (direction === 'up' ? -1 : 1)];
+    items[index + (direction === 'up' ? -1 : 1)] = swap;
+    setUserTemplates(items);
+    localStorage.setItem('vector-user-templates', JSON.stringify(items));
+  };
+
+  const deleteUserTemplate = (id: string) => {
+    const updated = userTemplates.filter(t => t.id !== id);
+    setUserTemplates(updated);
+    localStorage.setItem('vector-user-templates', JSON.stringify(updated));
+    if (selectedTemplateId === id) {
+       setSelectedTemplateId('single');
+       setCurrentBlockIndex(0);
+    }
+  };
+
+  const openBuilder = () => {
+    setBuilderTitle('');
+    setBuilderBlocks([]);
+    setIsBuildingProtocol(true);
+    setIsManagingProtocols(false);
   };
 
   const quickAddTask = async () => {
@@ -89,238 +249,389 @@ export const TimerView = () => {
     const id = await db.tasks.add({ label, status: 'active', priority: 'HIGH', createdAt: Date.now() });
     setActiveTask({ id, label });
     setNewTaskLabel('');
-    setShowTaskPicker(false);
   };
 
   return (
-    <div className="flex flex-col items-center min-h-[calc(100vh-64px)] px-4 py-8 md:py-12 relative">
+    <div className="flex flex-col items-center min-h-[calc(100vh-64px)] px-4 py-6 md:py-10 relative overflow-y-auto overflow-x-hidden no-scrollbar w-full max-w-7xl mx-auto">
 
-      {/* Status Row */}
-      <div className="w-full max-w-lg flex justify-between items-center mb-10">
-        <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-sm transition-colors ${isRunning ? 'bg-secondary shadow-[0_0_8px_#00e475] animate-pulse' : 'bg-outline/40'}`} />
-          <span className="font-headline font-bold text-[10px] uppercase tracking-[0.2em] text-on-surface-variant">
-            {isRunning ? 'Session Active' : isCompleted ? 'Session Complete' : 'Standby'}
-          </span>
+      {/* Global Status Row (Top Header on Desktop) */}
+      {!isBuildingProtocol && !isManagingProtocols && (
+        <div className="w-full flex justify-between items-center mb-8 animate-in fade-in duration-300">
+           <div className="flex items-center gap-2 border border-outline-variant/30 bg-[#111318] px-3 py-1.5 rounded-full shadow-lg">
+              <div className={`w-2 h-2 rounded-full transition-colors ${isRunning ? 'animate-pulse' : 'bg-outline/40'}`} 
+                   style={{ backgroundColor: isRunning ? themeColor : '', boxShadow: isRunning ? `0 0 8px ${themeColor}` : '' }} />
+              <span className="font-headline font-bold text-[10px] uppercase tracking-[0.2em] text-on-surface-variant">
+                {isRunning ? (isBreak ? 'System Recovery' : 'Session Active') : isCompleted ? 'Session Complete' : 'Standby'}
+              </span>
+           </div>
+           
+           <button onClick={() => setActiveTab(activeTab === 'velocity' ? 'engine' : 'velocity')} 
+                   className="flex items-center gap-2 px-4 py-2 rounded-full border border-primary/30 text-primary hover:bg-primary/10 transition-colors bg-primary/5 shadow-[0_0_15px_rgba(0,219,233,0.1)]">
+              {activeTab === 'velocity' ? <Timer size={14}/> : <Activity size={14}/>}
+              <span className="text-[10px] uppercase font-bold tracking-widest">{activeTab === 'velocity' ? 'Return to Engine' : 'Velocity Metrics'}</span>
+           </button>
         </div>
-        <span className="font-headline font-bold text-[10px] uppercase tracking-widest text-primary-fixed-dim">v1.0.4-stable</span>
-      </div>
+      )}
 
-      {/* Timer Ring */}
-      <div className="relative flex items-center justify-center mb-10" style={{ width: 280, height: 280 }}>
-        <div className="absolute inset-0 rounded-full border border-primary/20 pointer-events-none transition-all duration-300"
-          style={{ animation: (isRunning || isRinging) ? 'ripple 2s cubic-bezier(0.2, 0, 0.2, 1) 0s infinite' : 'none', opacity: 0 }} />
-        <div className="absolute inset-0 rounded-full border border-primary/20 pointer-events-none transition-all duration-300"
-          style={{ animation: (isRunning || isRinging) ? 'ripple 2s cubic-bezier(0.2, 0, 0.2, 1) -1s infinite' : 'none', opacity: 0 }} />
-
-        <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full -rotate-90 overflow-visible">
-          <circle cx="50" cy="50" r={R} fill="none" stroke="#282a2e" strokeWidth="5" />
-          <circle cx="50" cy="50" r={R} fill="none"
-            stroke={isCompleted ? '#00e475' : isPaused ? '#6b7280' : isRinging ? '#ff4081' : '#00dbe9'}
-            strokeWidth="5" strokeLinecap="butt"
-            strokeDasharray={circ} strokeDashoffset={dashOffset}
-            className="transition-all duration-300 ease-linear"
-            style={{ filter: isRinging ? 'drop-shadow(0 0 10px rgba(255,64,129,0.9))' : isRunning ? 'drop-shadow(0 0 10px rgba(0,219,233,0.8))' : 'none' }}
-          />
-        </svg>
-
-        <div className="absolute rounded-full"
-          style={{ inset:'12px', background:'radial-gradient(circle at 40% 35%, #1a1c20 0%, #111318 100%)' }} />
-
-        <div className="relative z-10 flex flex-col items-center">
-          <span className={`font-headline font-black tabular-nums leading-none transition-all duration-300 ${isCompleted ? 'text-secondary secondary-glow' : isRinging ? 'text-[#ff4081]' : isPaused ? 'text-on-surface-variant' : isRunning ? 'text-primary terminal-glow' : 'text-primary/60'}`}
-            style={{ fontSize:'3.5rem', letterSpacing:'-0.04em' }}>
-            {m}:{s}
-          </span>
-          <span className="mt-2 font-headline font-bold text-[10px] uppercase tracking-[0.25em] text-on-surface-variant">
-            {isCompleted ? '✓ Complete' : isRinging ? 'TIME IS UP' : isPaused ? '⏸ PAUSED' : isRunning ? `${Math.round(progress*100)}%` : `${selectedMins} min`}
-          </span>
-          {(isRunning || isRinging || isPaused) && (
-            <div className="mt-3 flex items-center gap-1.5">
-              {[0,1,2].map(i => (
-                <div key={i} className={`w-1 h-1 rounded-full transition-colors duration-300 ${isPaused ? 'bg-[#6b7280]' : 'bg-primary-fixed-dim'}`}
-                  style={{ animation: isPaused ? 'none' : `dotPulse 1.2s ease-in-out ${i*0.2}s infinite` }} />
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Preset Selector */}
-      <div className="w-full max-w-lg mb-2">
-        <div className="grid grid-cols-3 gap-2 mb-2">
-          {PRESETS.map(({ label, mins, desc }) => {
-            const active = selectedMins === mins && !showCustom;
-            return (
-              <button key={label} disabled={isRunning} onClick={() => selectPreset(mins)}
-                className={`py-4 flex flex-col items-center gap-1 transition-all duration-150 active:scale-95 border-b-2 ${
-                  active ? 'border-primary-fixed-dim text-primary' : 'border-transparent text-on-surface-variant hover:border-primary/30 hover:text-primary/70'
-                } ${isRunning ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
-                style={{ background: active ? 'rgba(0,219,233,0.06)' : '#1a1c20' }}>
-                <span className="font-headline font-bold text-[9px] uppercase tracking-[0.2em] opacity-60">{label}</span>
-                <span className="font-headline font-black text-xl tabular-nums">{mins}:00</span>
-                <span className="font-headline text-[8px] uppercase tracking-widest opacity-40">{desc}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Custom time button */}
-        <button
-          disabled={isRunning}
-          onClick={() => !isRunning && setShowCustom(!showCustom)}
-          className={`w-full py-3 flex items-center justify-center gap-2 font-headline font-bold text-[10px] uppercase tracking-widest transition-all border-b-2 ${
-            showCustom ? 'border-tertiary-fixed-dim text-tertiary-fixed-dim' : 'border-transparent text-on-surface-variant/50 hover:text-primary/60 hover:border-primary/20'
-          } ${isRunning ? 'opacity-30 cursor-not-allowed' : ''}`}
-          style={{ background: showCustom ? 'rgba(255,186,56,0.04)' : '#111318' }}
-        >
-          <Edit3 size={12} />
-          {showCustom && selectedMins && !PRESETS.find(p=>p.mins===selectedMins)
-            ? `Custom: ${selectedMins}m`
-            : 'Custom Duration'}
-        </button>
-
-        {showCustom && !isRunning && (
-          <div className="flex items-center gap-2 mt-2 p-3" style={{ background:'#1e2024', border:'1px solid rgba(255,186,56,0.2)' }}>
-            <span className="font-headline font-bold text-[10px] text-on-surface-variant uppercase tracking-widest whitespace-nowrap">
-              Minutes:
-            </span>
-            <input
-              autoFocus
-              type="number" min="1" max="480"
-              value={customMins}
-              onChange={e => setCustomMins(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && applyCustom()}
-              placeholder="e.g. 45"
-              className="flex-1 bg-transparent font-headline font-black text-xl text-tertiary-fixed-dim tabular-nums outline-none placeholder:text-on-surface-variant/30"
-            />
-            <button onClick={applyCustom}
-              className="px-4 py-1.5 font-headline font-bold text-[10px] uppercase tracking-widest transition-all active:scale-95"
-              style={{ background:'#ffba38', color:'#281900' }}>
-              Set
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Task Pairing */}
-      <div className="w-full max-w-lg mb-3 mt-3 relative">
-        <button
-          onClick={() => !isRunning && setShowTaskPicker(!showTaskPicker)}
-          className={`w-full flex items-center justify-between p-4 group transition-all duration-150 border-l-2 ${isRunning ? 'cursor-default' : 'cursor-pointer hover:border-primary-fixed-dim'}`}
-          style={{ background:'#1a1c20', borderLeftColor: activeTask.id ? '#00dbe9' : 'rgba(0,219,233,0.2)' }}>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 flex items-center justify-center flex-shrink-0"
-              style={{ background:'rgba(0,219,233,0.05)', border:'1px solid rgba(0,219,233,0.15)' }}>
-              <Zap size={16} className="text-primary-fixed-dim" />
-            </div>
-            <div className="text-left">
-              <div className="font-headline font-bold text-[9px] uppercase tracking-widest text-on-surface-variant mb-0.5">Current Objective</div>
-              <div className="font-headline font-bold text-sm text-primary uppercase tracking-tight truncate max-w-[220px]">{activeTask.label}</div>
-            </div>
-          </div>
-          {!isRunning && <ChevronDown size={18} className={`text-on-surface-variant/50 transition-transform flex-shrink-0 ${showTaskPicker ? 'rotate-180':''}`} />}
-        </button>
-
-        {showTaskPicker && (
-          <div className="absolute left-0 right-0 z-30 mt-1 max-h-72 overflow-y-auto no-scrollbar"
-            style={{ background:'#1e2024', border:'1px solid rgba(0,219,233,0.12)', boxShadow:'0 8px 32px rgba(0,0,0,0.6)' }}>
-            <div className="flex items-center gap-2 p-3" style={{ borderBottom:'1px solid #282a2e' }}>
-              <input autoFocus value={newTaskLabel} onChange={e => setNewTaskLabel(e.target.value)}
-                onKeyDown={e => e.key==='Enter' && quickAddTask()}
-                placeholder="NEW_TASK_LABEL..."
-                className="flex-1 bg-transparent font-headline font-bold text-xs uppercase text-primary placeholder:text-on-surface-variant/30 outline-none tracking-wider" />
-              <button onClick={quickAddTask}
-                className="w-7 h-7 flex items-center justify-center text-primary-fixed-dim hover:bg-surface-container-highest transition-colors">
-                <Plus size={14} />
-              </button>
-            </div>
-            <button onClick={() => { setActiveTask({ label:'General Focus' }); setShowTaskPicker(false); }}
-              className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-surface-container-high transition-colors">
-              <span className="font-headline font-bold text-xs text-on-surface-variant uppercase tracking-wider">General Focus</span>
-            </button>
-            {pendingTasks?.map(task => (
-              <button key={task.id}
-                onClick={() => {
-                  setActiveTask({ id: task.id, label: task.label });
-                  if (task.id) db.tasks.update(task.id, { status:'active' });
-                  setShowTaskPicker(false);
-                }}
-                className={`w-full flex items-center justify-between px-4 py-3 text-left transition-colors ${activeTask.id===task.id ? 'bg-surface-container-high':'hover:bg-surface-container-high/50'}`}>
-                <div>
-                  <div className="font-headline font-bold text-xs text-on-surface uppercase tracking-tight">{task.label}</div>
-                  {task.meta && <div className="font-body text-[9px] text-outline uppercase tracking-widest">{task.meta}</div>}
+      {isManagingProtocols ? (
+        <div className="w-full max-w-lg animate-in fade-in slide-in-from-bottom-4">
+           {/* Manager UI */}
+           <div className="flex justify-between items-center mb-6 border-b border-outline-variant/20 pb-4">
+             <div>
+               <h2 className="font-headline font-black text-2xl text-primary uppercase tracking-tight">Manage Protocols</h2>
+               <p className="text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">Reorder or Delete custom workflows</p>
+             </div>
+             <button onClick={() => setIsManagingProtocols(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface-container-high text-on-surface-variant transition-colors">
+                <X size={16} />
+             </button>
+           </div>
+           
+           <div className="space-y-3">
+             {userTemplates.length === 0 && <div className="text-[10px] uppercase tracking-widest text-on-surface-variant/50 p-6 border border-outline-variant/10 rounded-xl bg-[#111318] text-center">No custom protocols saved.</div>}
+             {userTemplates.map((t, idx) => (
+                <div key={t.id} className="flex items-center justify-between bg-[#111318] p-4 rounded-xl border border-outline-variant/20 shadow-lg">
+                   <div>
+                      <div className="font-headline font-bold text-sm text-primary uppercase tracking-tight mb-0.5">{t.label}</div>
+                      <div className="text-[9px] uppercase tracking-widest text-on-surface-variant/50">{t.blocks.length} Phases</div>
+                   </div>
+                   <div className="flex items-center gap-2 border-l border-outline-variant/20 pl-4 ml-4 shrink-0">
+                      <div className="flex flex-col gap-1">
+                         <button onClick={() => moveUserTemplate(idx, 'up')} disabled={idx === 0} className="text-on-surface-variant hover:text-primary disabled:opacity-30 disabled:cursor-not-allowed">
+                            <ArrowUp size={14}/>
+                         </button>
+                         <button onClick={() => moveUserTemplate(idx, 'down')} disabled={idx === userTemplates.length - 1} className="text-on-surface-variant hover:text-primary disabled:opacity-30 disabled:cursor-not-allowed">
+                            <ArrowDown size={14}/>
+                         </button>
+                      </div>
+                      <button onClick={() => deleteUserTemplate(t.id)} className="ml-2 w-8 h-8 flex items-center justify-center rounded-full text-error/60 border border-error/20 bg-error/5 hover:bg-error/20 hover:text-error transition-colors">
+                         <Trash2 size={12} />
+                      </button>
+                   </div>
                 </div>
-                <span className={`text-[8px] font-bold px-1.5 py-0.5 border flex-shrink-0 ml-2 ${task.priority==='HIGH' ? 'text-error border-error/30' : task.priority==='MED' ? 'text-tertiary-fixed-dim border-tertiary-fixed-dim/30' : 'text-outline border-outline-variant'}`}>
-                  {task.priority}
-                </span>
-              </button>
-            ))}
-            {(!pendingTasks || pendingTasks.length===0) && (
-              <div className="px-4 py-3 text-[10px] text-on-surface-variant/50 uppercase tracking-widest">No tasks — type above to add one</div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Lock-In Mode */}
-      <div className="w-full max-w-lg mb-8 flex items-center justify-between p-4 border-l-2"
-        style={{ background:'#1a1c20', borderLeftColor: lockIn ? '#ffba38' : 'rgba(255,186,56,0.25)' }}>
-        <div>
-          <div className="flex items-center gap-2 mb-0.5">
-            <Lock size={12} className="text-tertiary-fixed-dim" />
-            <span className="font-headline font-bold text-xs uppercase tracking-widest text-tertiary-fixed-dim">Lock-In Mode</span>
-          </div>
-          <div className="text-[10px] text-on-surface-variant/60 uppercase tracking-wide">Restrict all notifications & background</div>
+             ))}
+           </div>
+           
+           <button onClick={openBuilder} className="w-full mt-6 py-4 flex items-center justify-center gap-2 font-headline font-black text-sm uppercase tracking-widest text-primary border border-primary/30 rounded-xl hover:bg-primary/5 transition-colors">
+             <Plus size={16}/> Create New Protocol
+           </button>
         </div>
-        <button onClick={() => setLockIn(!lockIn)}
-          className="relative w-12 h-6 flex-shrink-0 transition-all duration-200"
-          style={{ background: lockIn ? 'rgba(255,186,56,0.15)':'#111318', border:`1px solid ${lockIn?'#ffba38':'#3b494b'}` }}>
-          <div className="absolute top-1 w-4 h-4 transition-all duration-200"
-            style={{ left: lockIn ? 'calc(100% - 20px)':'4px', background: lockIn?'#ffba38':'#3b494b', boxShadow: lockIn?'0 0 8px rgba(255,186,56,0.6)':'none' }} />
-        </button>
-      </div>
+      ) : isBuildingProtocol ? (
+        <div className="w-full max-w-lg animate-in fade-in slide-in-from-bottom-4">
+           {/* Builder UI */}
+           <div className="flex justify-between items-center mb-6 border-b border-outline-variant/20 pb-4">
+             <div>
+               <h2 className="font-headline font-black text-2xl text-primary uppercase tracking-tight">Protocol Builder</h2>
+               <p className="text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">Construct custom workflow</p>
+             </div>
+             <button onClick={() => setIsBuildingProtocol(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface-container-high text-on-surface-variant transition-colors">
+                <X size={16} />
+             </button>
+           </div>
+           
+           <div className="mb-6 space-y-1">
+             <label className="text-[9px] uppercase tracking-widest font-bold text-on-surface-variant/60">Protocol Designation</label>
+             <input value={builderTitle} onChange={e => setBuilderTitle(e.target.value)} autoFocus
+               className="w-full bg-[#111318] border border-outline-variant/30 rounded-xl p-4 font-headline font-black text-xl text-primary outline-none focus:border-primary/50 transition-colors placeholder:text-on-surface-variant/20 shadow-inner"
+               placeholder="Enter Protocol Name..." />
+           </div>
 
-      {/* CTA */}
-      <div className="w-full max-w-lg mt-auto flex gap-2 pt-6">
-        {!isRunning && !isPaused && !isRinging ? (
-          <button onClick={handleStart}
-            className="flex-1 py-5 font-headline font-black text-base uppercase tracking-[0.2em] transition-all duration-200 active:scale-[0.98]"
-            style={{
-              background: 'linear-gradient(135deg, #00dbe9 0%, #00f0ff 100%)',
-              color: '#002022',
-              boxShadow: '0 0 40px rgba(0,219,233,0.2), 0 4px 20px rgba(0,0,0,0.4)',
-            }}>
-            {isCompleted ? 'New Session' : `Initialize ${selectedMins}m Focus`}
-          </button>
-        ) : (
-          <>
-            {(isRunning || isPaused) && (
-              <button onClick={isPaused ? resumeTimer : pauseTimer}
-                className="px-6 py-5 font-headline font-black text-base uppercase tracking-[0.2em] transition-all duration-200 active:scale-[0.98] border border-outline-variant hover:border-primary hover:bg-surface-container-high"
-                style={{ background: '#1a1c20', color: isPaused ? '#00dbe9' : '#ffba38' }}>
-                {isPaused ? '▶ RESUME' : '⏸ PAUSE'}
+           <div className="mb-8">
+             <div className="flex justify-between items-center mb-4">
+               <span className="text-[9px] uppercase tracking-widest font-bold text-on-surface-variant/60">Execution Sequence</span>
+               <div className="flex gap-2">
+                 <button onClick={() => setBuilderBlocks([...builderBlocks, { type: 'focus', mins: 30, label: 'Focus Block' }])}
+                   className="text-[9px] uppercase tracking-widest font-bold text-primary flex items-center gap-1 hover:text-primary-fixed-dim bg-primary/5 border border-primary/20 px-3 py-1.5 rounded-lg transition-colors">
+                   <Plus size={10} /> Focus Block
+                 </button>
+                 <button onClick={() => setBuilderBlocks([...builderBlocks, { type: 'break', mins: 5, label: 'Short Break' }])}
+                   className="text-[9px] uppercase tracking-widest font-bold text-secondary flex items-center gap-1 hover:text-secondary/80 bg-secondary/5 border border-secondary/20 px-3 py-1.5 rounded-lg transition-colors">
+                   <Plus size={10} /> Break Period
+                 </button>
+               </div>
+             </div>
+
+             <div className="space-y-3">
+               {builderBlocks.map((b, i) => (
+                 <div key={i} className={`flex items-center gap-3 p-4 rounded-xl border shadow-lg ${b.type==='break' ? 'border-secondary/20 bg-secondary/5' : 'border-primary/20 bg-primary/5'}`}>
+                   <div className="flex flex-col flex-1 gap-1">
+                      <div className="flex items-center gap-2">
+                        {b.type === 'break' ? <Coffee size={14} className="text-secondary"/> : <Zap size={14} className="text-primary"/>}
+                        <input className="bg-transparent font-headline font-bold text-sm uppercase tracking-widest text-on-surface outline-none w-full placeholder:text-on-surface-variant/30"
+                           value={b.label}
+                           placeholder="Phase label..."
+                           onChange={e => { const nm = [...builderBlocks]; nm[i].label = e.target.value; setBuilderBlocks(nm); }}
+                        />
+                      </div>
+                   </div>
+                   <div className="flex items-center gap-2 border-l border-outline-variant/20 pl-4">
+                     <input type="number" min="1" max="480" value={b.mins} 
+                            onChange={e => { const nm = [...builderBlocks]; nm[i].mins = e.target.value === '' ? '' : parseInt(e.target.value); setBuilderBlocks(nm); }}
+                            placeholder="Mins"
+                            className="bg-transparent font-headline font-black text-xl text-on-surface tabular-nums outline-none w-14 text-right placeholder:text-on-surface-variant/20" />
+                     <span className="text-[10px] uppercase font-bold text-on-surface-variant/50 mr-2">min</span>
+                     <button onClick={() => setBuilderBlocks(builderBlocks.filter((_,idx)=>idx!==i))} className="w-8 h-8 flex items-center justify-center rounded-full text-error/60 hover:bg-error/10 hover:text-error transition-colors">
+                        <Trash2 size={14} />
+                     </button>
+                   </div>
+                 </div>
+               ))}
+               {builderBlocks.length === 0 && <div className="text-center p-10 text-[10px] uppercase font-bold text-on-surface-variant/40 border-2 border-outline-variant/10 border-dashed rounded-xl bg-[#111318]">Sequence is Empty.<br/>Add a Focus or Break block above.</div>}
+             </div>
+           </div>
+
+           <button onClick={saveProtocol} disabled={builderBlocks.length === 0}
+             className="w-full py-5 font-headline font-black text-sm uppercase tracking-[0.2em] transition-all bg-primary text-black rounded-xl hover:bg-primary-fixed-dim disabled:opacity-30 shadow-[0_4px_20px_rgba(0,219,233,0.3)]">
+             Commit Protocol to Database
+           </button>
+        </div>
+      ) : activeTab === 'velocity' ? (
+        <div className="w-full animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <MetricsView isEmbedded />
+        </div>
+      ) : (
+        <div className="flex flex-col lg:flex-row items-center lg:items-center justify-center w-full gap-12 lg:gap-24 relative">
+          
+          {/* Left Column (Huge Native Timer SVG) */}
+          <div className="flex-1 flex justify-center w-full max-w-[320px] lg:max-w-[460px] relative z-10">
+            <div className="relative flex flex-shrink-0 items-center justify-center w-full aspect-square">
+              
+              {/* Core SVG Glowing Orbits Background */}
+              <div className="absolute inset-0 rounded-full" 
+                   style={{ 
+                     background: `radial-gradient(circle at center, rgba(${themeColorRgb},0.08) 0%, rgba(${themeColorRgb},0.02) 40%, transparent 70%)`,
+                     boxShadow: `inset 0 0 80px rgba(0,0,0,0.8), 0 0 60px rgba(${themeColorRgb},0.15)`
+                   }} />
+                   
+              {isRunning && (
+                <>
+                  <div className="absolute inset-0 rounded-full border pointer-events-none transition-all duration-300 shadow-[0_0_40px_rgba(0,219,233,0.2)]"
+                    style={{ borderColor: `rgba(${themeColorRgb},0.4)`, animation: 'ripple 3s cubic-bezier(0.2, 0, 0.2, 1) 0s infinite', opacity: 0 }} />
+                  <div className="absolute inset-0 rounded-full border pointer-events-none transition-all duration-300 shadow-[0_0_40px_rgba(0,219,233,0.2)]"
+                    style={{ borderColor: `rgba(${themeColorRgb},0.4)`, animation: 'ripple 3s cubic-bezier(0.2, 0, 0.2, 1) -1.5s infinite', opacity: 0 }} />
+                </>
+              )}
+
+              <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full -rotate-90 overflow-visible z-10 relative">
+                <circle cx="50" cy="50" r={R} fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="6" />
+                <circle cx="50" cy="50" r={R} fill="none" stroke="rgba(0,0,0,0.4)" strokeWidth="6" />
+                <circle cx="50" cy="50" r={R} fill="none"
+                  stroke={isCompleted ? themeColor : isPaused ? '#6b7280' : isRinging ? '#ff4081' : themeColor}
+                  strokeWidth="6" strokeLinecap="round"
+                  strokeDasharray={circ} strokeDashoffset={dashOffset}
+                  className="transition-all duration-300 ease-linear"
+                  style={{ filter: isRinging ? 'drop-shadow(0 0 15px rgba(255,64,129,0.7))' : isRunning ? `drop-shadow(0 0 20px rgba(${themeColorRgb},0.8))` : 'drop-shadow(0 0 8px rgba(0,219,233,0.3))' }}
+                />
+              </svg>
+
+              <div className="absolute rounded-full z-10" style={{ inset:'16px', background:'#0B0E12', boxShadow:'inset 0 0 60px rgba(0,0,0,0.9), inset 0 2px 4px rgba(255,255,255,0.05)' }} />
+
+              {/* Inner Circle Content */}
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center transform scale-90 lg:scale-100 pb-2">
+                 <div className="flex-1 flex flex-col items-center justify-end pb-1 w-full">
+                     {selectedTemplate.blocks.length > 1 && (
+                        <div className="mb-2 px-3 py-1 rounded-full bg-surface-container/50 border border-outline-variant/10 text-[8px] font-bold uppercase tracking-widest text-on-surface-variant/80">
+                           Phase {currentBlockIndex + 1}/{selectedTemplate.blocks.length}
+                        </div>
+                     )}
+                    <span className={`font-headline font-black tabular-nums transition-all duration-300 ${isCompleted ? 'secondary-glow' : isRinging ? 'text-[#ff4081]' : isPaused ? 'text-on-surface-variant' : isRunning ? 'terminal-glow' : 'opacity-80'}`}
+                      style={{ fontSize:'4.5rem', letterSpacing:'-0.05em', color: (isCompleted || isRunning) && !isRinging && !isPaused ? themeColor : undefined, lineHeight: '1' }}>
+                      {m}:{s}
+                    </span>
+                    <span className="mt-1 font-headline font-bold text-[9px] uppercase tracking-[0.25em] text-on-surface-variant flex items-center gap-1.5 max-w-[200px] truncate text-center">
+                      {isBreak && !isRinging && !isCompleted && <Coffee size={10} className="text-secondary shrink-0" />}
+                      <span className="truncate">{isCompleted ? '✓ Complete' : isRinging ? 'TIME IS UP' : isPaused ? '⏸ PAUSED' : isRunning ? `${Math.round(progress*100)}%` : `${currentBlock.label}`}</span>
+                    </span>
+                 </div>
+                 
+                 {/* Internal CTA Strip nested right inside the circle */}
+                 <div className="flex-1 flex items-start justify-center pt-5 w-full">
+                    {!isRunning && !isPaused && !isRinging && !isCompleted ? (
+                        <button onClick={() => executeStart()}
+                          className="flex items-center justify-center gap-2 px-8 py-3.5 rounded-full font-headline font-black text-[11px] uppercase tracking-widest transition-all duration-300 hover:scale-105 active:scale-95"
+                          style={{
+                            background: isBreak ? 'linear-gradient(135deg, rgba(0,228,117,0.2) 0%, rgba(0,181,92,0.1) 100%)' : 'linear-gradient(135deg, rgba(0,219,233,0.15) 0%, rgba(0,240,255,0.05) 100%)',
+                            border: `1px solid ${themeColor}`,
+                            color: themeColor,
+                            boxShadow: `0 0 30px rgba(${themeColorRgb},0.15)`,
+                          }}>
+                          <Play size={14} fill={themeColor}/>
+                          {isBreak ? `Start Break` : `Initialize`}
+                        </button>
+                    ) : (
+                        <div className="flex items-center gap-3">
+                           {isRinging || isCompleted ? (
+                             <button onClick={handleNextBlock}
+                               className="flex items-center gap-2 px-6 py-3 rounded-full font-headline font-black text-[10px] uppercase tracking-widest transition-all duration-300 hover:scale-105"
+                               style={{ background: isRinging ? '#ff4081' : themeColor, color: '#000', boxShadow: isRinging ? '0 0 40px rgba(255,64,129,0.5)' : `0 0 30px rgba(${themeColorRgb},0.3)` }}>
+                               {isRinging ? <Square size={12} fill="#000"/> : <SkipForward size={12} fill="#000"/>}
+                               {isRinging ? 'STOP ALARM' : 'NEXT FLOW'}
+                             </button>
+                           ) : (
+                             <button onClick={isPaused ? resumeTimer : pauseTimer}
+                               className="flex items-center gap-2 px-6 py-3 rounded-full font-headline font-black text-[10px] uppercase tracking-widest transition-all duration-300 hover:scale-105"
+                               style={{ background: isPaused ? 'rgba(0,219,233,0.15)' : 'rgba(255,186,56,0.15)', border: `1px solid ${isPaused ? themeColor : '#ffba38'}`, color: isPaused ? themeColor : '#ffba38' }}>
+                               {isPaused ? <Play size={12} fill={themeColor}/> : <Pause size={12} fill="#ffba38"/>}
+                               {isPaused ? 'RESUME' : 'PAUSE'}
+                             </button>
+                           )}
+                           <button onClick={handleManualReset}
+                             className="w-10 h-10 flex items-center justify-center rounded-full border border-outline-variant/30 text-on-surface-variant hover:border-error hover:text-error hover:bg-error/10 transition-colors">
+                             <X size={14} />
+                           </button>
+                        </div>
+                    )}
+                 </div>
+              </div>
+
+            </div>
+          </div>
+
+          <div className={`flex-1 w-full max-w-sm flex flex-col items-center lg:items-start justify-center transition-all duration-700 ease-in-out ${isRunning || isPaused || isRinging ? 'opacity-40' : 'opacity-100'}`}>
+            {/* Execution Protocols Selector (Collapsible View) */}
+            <div className="w-full mb-6">
+              <div className="flex justify-between items-center mb-2 pl-1 pr-1">
+                <span className="font-headline font-bold text-[9px] uppercase tracking-widest text-on-surface-variant/60">Execution Protocol</span>
+                <div className="flex items-center gap-3">
+                   <button onClick={() => setIsManagingProtocols(true)} className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant hover:text-primary transition-colors flex items-center gap-1">
+                     <Settings2 size={10}/> Manage
+                   </button>
+                   <button onClick={openBuilder} className="text-[9px] font-bold uppercase tracking-widest text-secondary hover:text-secondary/80 flex items-center gap-1 transition-colors">
+                     <Plus size={10}/> New
+                   </button>
+                </div>
+              </div>
+              
+              {/* Selected Active Protocol Button */}
+              <button onClick={() => setShowFlows(!showFlows)} className={`w-full bg-[#111318] border ${showFlows ? 'border-primary' : 'border-outline-variant/30'} rounded-xl p-4 flex justify-between items-center transition-all shadow-lg hover:border-primary/50 relative z-20`}>
+                 <div className="flex flex-col items-start gap-1 text-left truncate flex-1 pr-4">
+                    <span className="font-headline font-bold text-sm text-primary uppercase tracking-tight truncate w-full">{selectedTemplate.label}</span>
+                    <span className="font-headline font-bold text-[9px] text-on-surface-variant/60 uppercase tracking-widest flex items-center gap-2">
+                       {selectedTemplate.blocks.length} Phases
+                       <div className="flex gap-0.5">
+                         {selectedTemplate.blocks.map((b,i) => (
+                           <div key={i} className={`w-1 h-1 rounded-full ${b.type === 'break' ? 'bg-secondary' : 'bg-primary'}`} />
+                         ))}
+                       </div>
+                    </span>
+                 </div>
+                 <ChevronDown size={14} className={`text-on-surface-variant/50 transition-transform flex-shrink-0 ${showFlows ? 'rotate-180':''}`} />
               </button>
+
+              {/* Expandable Tile List */}
+              <div className={`transition-all duration-300 ease-in-out relative z-10 ${showFlows ? 'opacity-100 translate-y-0 mt-4 pointer-events-auto' : 'opacity-0 -translate-y-4 max-h-0 pointer-events-none'}`}>
+                 <div className="flex flex-wrap gap-3 pb-4 pt-1">
+                    {ALL_TEMPLATES.map(t => (
+                      <button key={t.id} onClick={() => { setSelectedTemplateId(t.id); setCurrentBlockIndex(0); setShowFlows(false); }}
+                              className={`flex-shrink-0 w-full md:w-[calc(50%-6px)] p-4 rounded-xl border text-left transition-all duration-200 shadow-lg ${selectedTemplateId === t.id ? 'border-primary bg-surface-container-highest' : 'border-outline-variant/10 bg-[#16181b] hover:border-primary/30'} ${t.id === 'single' ? 'bg-[#111318]' : ''}`}>
+                        <div className={`font-headline font-bold text-xs uppercase tracking-widest mb-1 truncate ${selectedTemplateId === t.id ? 'text-primary' : 'text-on-surface-variant'}`}>{t.label}</div>
+                        <div className="text-[9px] font-bold text-on-surface-variant/50 uppercase tracking-widest mb-4 truncate line-clamp-2 white-space-normal h-[24px]">{t.desc}</div>
+                        
+                        <div className="flex gap-1 h-1.5 w-full bg-surface-container-highest rounded-full overflow-hidden">
+                          {t.blocks.map((b,i) => (
+                            <div key={i} className={`flex-1 ${b.type === 'break' ? 'bg-secondary' : 'bg-primary'}`} style={{ opacity: selectedTemplateId === t.id ? 1 : 0.6 }}/>
+                          ))}
+                        </div>
+                      </button>
+                    ))}
+                 </div>
+              </div>
+            </div>
+
+            {/* Goal Selector immediately under Timer */}
+            <div className="w-full mb-8 relative z-0">
+               <div className="flex justify-between items-center mb-2 pl-1 pr-1">
+                   <span className="font-headline font-bold text-[9px] uppercase tracking-widest text-on-surface-variant/50">Primary Objective</span>
+                   
+                   {/* Lock-In Toggle aligned right */}
+                   <div className="flex items-center gap-1.5 opacity-80 hover:opacity-100 transition-opacity">
+                      <Lock size={10} className={lockIn ? 'text-[#ffba38]' : 'text-on-surface-variant/50'} />
+                      <span className={`text-[8px] uppercase tracking-widest font-bold ${lockIn ? 'text-[#ffba38]' : 'text-on-surface-variant/60'}`}>Lock-In</span>
+                      <button onClick={() => setLockIn(!lockIn)} className="relative w-7 h-3.5 bg-[#1a1c20] border border-outline-variant/30 rounded-full transition-colors" style={{ borderColor: lockIn ? 'rgba(255,186,56,0.5)' : undefined }}>
+                        <div className="absolute top-0.5 w-2.5 h-2.5 transition-all duration-200 rounded-full" style={{ left: lockIn ? 'calc(100% - 11px)':'2px', background: lockIn?'#ffba38':'#3b494b', boxShadow: lockIn ? '0 0 6px rgba(255,186,56,0.6)' : 'none' }} />
+                      </button>
+                   </div>
+               </div>
+
+               <div className={`w-full bg-[#111318] border flex flex-col ${activeTask.id ? 'border-primary/50 shadow-[0_0_15px_rgba(0,219,233,0.1)]' : 'border-outline-variant/20 shadow-lg'} rounded-xl p-4 transition-all overflow-hidden`}>
+                 <div className="flex items-center gap-3 w-full overflow-hidden">
+                   <div className="w-8 h-8 rounded-md bg-surface-container flex items-center justify-center shrink-0">
+                      <Zap size={14} className={activeTask.id ? 'text-primary' : 'text-on-surface-variant/50'} />
+                   </div>
+                   <div className="flex flex-col items-start gap-0.5 truncate w-full">
+                     <span className={`font-headline font-bold text-sm uppercase tracking-tight text-left w-full truncate block ${activeTask.id ? 'text-primary' : 'text-on-surface'}`}>{activeTask.label}</span>
+                     <span className="text-[9px] text-on-surface-variant/60 uppercase tracking-widest font-bold">
+                        {activeTask.id ? 'Active Focus Target' : 'Current Target (General)'}
+                     </span>
+                   </div>
+                 </div>
+
+                 {/* Integrated Task Backlog View */}
+                 {!isRunning && (
+                   <div className="mt-4 pt-4 border-t border-outline-variant/10 w-full animate-in fade-in slide-in-from-top-2 duration-300">
+                      <div className="flex items-center gap-2 mb-3">
+                        <input value={newTaskLabel} onChange={e => setNewTaskLabel(e.target.value)} onKeyDown={e => e.key==='Enter' && quickAddTask()}
+                           placeholder="Type new backlog task..." className="flex-1 bg-surface-container border border-outline-variant/10 rounded-md p-2.5 font-headline text-xs font-bold uppercase text-primary placeholder:text-on-surface-variant/30 outline-none focus:border-primary/30 transition-colors" />
+                        <button onClick={quickAddTask} className="w-9 h-9 shrink-0 flex items-center justify-center bg-primary/10 text-primary hover:bg-primary/20 rounded-md transition-colors"><Plus size={14}/></button>
+                      </div>
+                      
+                      <div className="max-h-40 overflow-y-auto no-scrollbar flex flex-col gap-1 -mx-2 px-2">
+                          <button onClick={() => setActiveTask({ label:'General Focus' })} 
+                                  className={`w-full py-2.5 px-3 text-left rounded-md transition-colors font-bold text-[10px] uppercase tracking-widest ${!activeTask.id && activeTask.label==='General Focus' ? 'bg-primary/10 text-primary' : 'hover:bg-primary/5 text-on-surface-variant'}`}>
+                             General Focus Focus
+                          </button>
+                          {pendingTasks?.map(t => (
+                            <button key={t.id} onClick={() => setActiveTask({ id: t.id, label: t.label })} 
+                                    className={`w-full py-2.5 px-3 text-left rounded-md transition-colors flex justify-between items-center group ${activeTask.id === t.id ? 'bg-primary/10 text-primary border border-primary/20' : 'hover:bg-primary/5 text-on-surface border border-transparent'}`}>
+                               <span className="font-bold text-[10px] uppercase tracking-widest truncate">{t.label}</span>
+                               <span className="shrink-0 text-[8px] font-bold opacity-40 group-hover:opacity-100">{t.priority}</span>
+                            </button>
+                          ))}
+                      </div>
+                   </div>
+                 )}
+               </div>
+            </div>
+
+            {/* Quick Resets (Only if Single Template Selected) */}
+            {!isRunning && selectedTemplate.id === 'single' && (
+               <div className="w-full mb-4">
+                  <div className="font-headline font-bold text-[9px] uppercase tracking-widest text-on-surface-variant/50 mb-2 pl-1">Quick Custom Override</div>
+                  <div className="grid grid-cols-5 gap-2">
+                    {recentMins.map((mins, i) => {
+                      const active = currentBlock.mins === mins && !showCustom;
+                      return (
+                        <button key={i} onClick={() => {
+                          TEMPLATES[0].blocks[0].mins = mins;
+                          setCurrentBlockIndex(0);
+                          setShowCustom(false);
+                        }}
+                          className={`py-3 flex flex-col items-center gap-1 transition-all active:scale-95 border rounded-lg shadow-md ${active ? 'border-primary text-primary bg-primary/10' : 'border-outline-variant/10 text-on-surface-variant hover:bg-surface-container-high bg-[#111318]'}`}>
+                          <span className="font-headline font-black text-lg tabular-nums leading-none">{mins}</span>
+                        </button>
+                      );
+                    })}
+                    <button onClick={() => setShowCustom(!showCustom)}
+                      className={`py-3 flex flex-col items-center justify-center gap-1 transition-all active:scale-95 border rounded-lg shadow-md ${showCustom ? 'border-tertiary-fixed-dim text-tertiary-fixed-dim bg-tertiary/10' : 'border-outline-variant/10 text-on-surface-variant/50 hover:bg-surface-container-high bg-[#111318]'}`}>
+                      <Edit3 size={16} />
+                    </button>
+                  </div>
+
+                  {showCustom && (
+                    <div className="flex items-center gap-2 mt-3 p-2 bg-[#111318] border border-tertiary/30 rounded-lg shadow-lg">
+                      <input autoFocus type="number" min="1" max="480" value={customMins} onChange={e => setCustomMins(e.target.value)} onKeyDown={e => e.key === 'Enter' && applyCustom()}
+                        placeholder="Minutes..." className="flex-1 bg-transparent font-headline font-black text-base text-tertiary-fixed-dim tabular-nums outline-none px-3" />
+                      <button onClick={applyCustom} className="px-5 py-2.5 font-headline font-black text-[10px] uppercase tracking-widest bg-tertiary text-on-tertiary rounded-md hover:bg-tertiary-fixed-dim transition-colors">Set Config</button>
+                    </div>
+                  )}
+               </div>
             )}
-            <button onClick={handleEnd}
-              className="flex-1 py-5 font-headline font-black text-base uppercase tracking-[0.2em] transition-all duration-200 active:scale-[0.98] border border-outline-variant hover:border-error/50 hover:bg-surface-container-high"
-              style={{ background: '#1a1c20', color: isRinging ? '#ff4081' : '#00dbe9' }}>
-              {isRinging ? '■ STOP ALARM' : '■ END & SAVE'}
-            </button>
-          </>
-        )}
-        {(isRunning || isCompleted || isPaused || isRinging) && (
-          <button onClick={handleReset}
-            className="w-14 font-headline font-bold transition-all duration-150 active:scale-95 flex items-center justify-center"
-            style={{ background:'#1a1c20', border:'1px solid #3b494b', color:'#849495' }}>
-            <X size={16} />
-          </button>
-        )}
-      </div>
+            
+          </div>
+        </div>
+      )}
 
       <style>{`
-        @keyframes ripple { 0% { transform:scale(0.85); opacity:0; border-width:2px; border-color:rgba(0,219,233,0.8); } 30% { opacity:0.5; } 100% { transform:scale(1.25); opacity:0; border-width:1px; border-color:rgba(0,219,233,0); } }
-        @keyframes dotPulse { 0%,100%{opacity:0.3;transform:scale(0.8);} 50%{opacity:1;transform:scale(1.2);} }
+        @keyframes ripple { 0% { transform:scale(0.85); opacity:0; border-width:3px; } 30% { opacity:0.3; } 100% { transform:scale(1.2); opacity:0; border-width:0px; } }
       `}</style>
     </div>
   );

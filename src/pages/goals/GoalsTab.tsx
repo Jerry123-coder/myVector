@@ -1,418 +1,247 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../../lib/db';
-import { Plus, Trash2, Target, ChevronDown, ChevronRight } from 'lucide-react';
+import { db, type Task } from '../../lib/db';
+import { nowMs } from '../../lib/time';
+import { Plus, Target, ChevronRight, CheckCircle2, Circle, Clock, Rocket, Trophy, LayoutGrid, Calendar } from 'lucide-react';
+import { GoalDetailOverlay } from '../../components/layout/GoalDetailOverlay';
 
-const daysLeft = (ms?: number) => {
+const daysLeft = (ms: number | undefined, ref: number) => {
   if (!ms) return null;
-  const d = Math.ceil((ms - Date.now()) / 86400000);
+  const d = Math.ceil((ms - ref) / 86400000);
   return d > 0 ? `${d}d left` : d === 0 ? 'Today' : 'Overdue';
 };
 
-const fmtDate = (ms?: number) =>
-  ms ? new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
-
 export const GoalsTab = () => {
+  const [now] = useState(() => Date.now());
+  
+  // Queries
   const annualGoals     = useLiveQuery(() => db.annualGoals.toArray().then(a => a.sort((x,y) => y.createdAt - x.createdAt)), []) ?? [];
   const quarterlyGoals  = useLiveQuery(() => db.quarterlyGoals.toArray().then(a => a.sort((x,y) => x.createdAt - y.createdAt)), []) ?? [];
   const allTasks        = useLiveQuery(() => db.tasks.toArray(), []) ?? [];
-  const allSprints      = useLiveQuery(() => db.sprints.toArray(), []) ?? [];
 
-  // UI state
-  const [expandedAnnual, setExpandedAnnual]     = useState<Set<number>>(new Set());
-  const [expandedQ, setExpandedQ]               = useState<Set<number>>(new Set());
-  const [creatingAnnual, setCreatingAnnual]     = useState(false);
-  const [creatingQ, setCreatingQ]               = useState<number | 'standalone' | null>(null); // annualGoalId or 'standalone'
+  // UI State
+  const [selectedGoal, setSelectedGoal] = useState<{ id: number; type: 'annual' | 'quarterly' } | null>(null);
+  const [creatingAnnual, setCreatingAnnual] = useState(false);
+  const [creatingQ, setCreatingQ] = useState(false);
 
-  // Annual form
-  const [aTitle, setATitle]       = useState('');
-  const [aDesc, setADesc]         = useState('');
-  const [aYear, setAYear]         = useState(String(new Date().getFullYear()));
-  const [aDate, setADate]         = useState('');
-  const [aTasks, setATasks]       = useState<string[]>([]);
-
-  // Quarterly form
-  const [qTitle, setQTitle]       = useState('');
-  const [qDesc, setQDesc]         = useState('');
-  const [qQuarter, setQQuarter]   = useState('');
-  const [qDate, setQDate]         = useState('');
-  const [qTasks, setQTasks]       = useState<string[]>([]);
-
-  const toggleAnnual = (id: number) => setExpandedAnnual(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const toggleQ      = (id: number) => setExpandedQ(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  // Form State (Simplified)
+  const [aTitle, setATitle] = useState('');
+  const [qTitle, setQTitle] = useState('');
+  const [qQuarter, setQQuarter] = useState(`Q${Math.ceil((new Date().getMonth() + 1) / 3)} ${new Date().getFullYear()}`);
 
   const createAnnual = async () => {
     if (!aTitle.trim()) return;
-    const time = Date.now();
-    const annualGoalId = await db.annualGoals.add({
-      title: aTitle.trim().toUpperCase(), description: aDesc || undefined,
-      year: Number(aYear) || new Date().getFullYear(),
+    await db.annualGoals.add({
+      title: aTitle.trim().toUpperCase(),
+      year: new Date().getFullYear(),
       status: 'active',
-      targetDate: aDate ? new Date(aDate).getTime() : undefined,
-      createdAt: time,
+      createdAt: nowMs(),
+      updatedAt: Date.now(),
     });
-    
-    if (aTasks.length > 0) {
-      const taskObjects = aTasks.filter(t => t.trim() !== '').map(label => ({
-        label: label.trim().toUpperCase(),
-        status: 'pending' as const,
-        priority: 'MED' as const,
-        annualGoalId: annualGoalId as number,
-        createdAt: time,
-      }));
-      if (taskObjects.length > 0) await db.tasks.bulkAdd(taskObjects);
-    }
-    
-    setATitle(''); setADesc(''); setADate(''); setATasks([]); setCreatingAnnual(false);
+    setATitle('');
+    setCreatingAnnual(false);
   };
 
-  const createQuarterly = async (annualGoalId?: number) => {
+  const createQuarterly = async () => {
     if (!qTitle.trim()) return;
-    const time = Date.now();
-    const quarterlyGoalId = await db.quarterlyGoals.add({
-      title: qTitle.trim().toUpperCase(), description: qDesc || undefined,
-      quarter: qQuarter || `Q${Math.ceil((new Date().getMonth() + 1) / 3)} ${new Date().getFullYear()}`,
-      annualGoalId,
+    await db.quarterlyGoals.add({
+      title: qTitle.trim().toUpperCase(),
+      quarter: qQuarter,
       status: 'active',
-      targetDate: qDate ? new Date(qDate).getTime() : undefined,
-      createdAt: time,
+      createdAt: nowMs(),
+      updatedAt: Date.now(),
     });
-    
-    if (qTasks.length > 0) {
-      const taskObjects = qTasks.filter(t => t.trim() !== '').map(label => ({
-        label: label.trim().toUpperCase(),
-        status: 'pending' as const,
-        priority: 'MED' as const,
-        quarterlyGoalId: quarterlyGoalId as number,
-        annualGoalId,
-        createdAt: time,
-      }));
-      if (taskObjects.length > 0) await db.tasks.bulkAdd(taskObjects);
-    }
-    
-    setQTitle(''); setQDesc(''); setQQuarter(''); setQDate(''); setQTasks([]); setCreatingQ(null);
+    setQTitle('');
+    setCreatingQ(false);
   };
 
-  const deleteAnnual     = async (id?: number) => { if (id) await db.annualGoals.delete(id); };
-  const deleteQuarterly  = async (id?: number) => { if (id) await db.quarterlyGoals.delete(id); };
-
-  const toggleTask = async (taskObj: import('../../lib/db').Task) => {
-    if (!taskObj.id) return;
-    await db.tasks.update(taskObj.id, taskObj.status === 'done'
-      ? { status: 'pending', completedAt: undefined }
-      : { status: 'done', completedAt: Date.now() });
+  const toggleTask = async (t: Task) => {
+    if (!t.id) return;
+    await db.tasks.update(t.id, {
+      status: t.status === 'done' ? 'pending' : 'done',
+      completedAt: t.status === 'done' ? undefined : nowMs(),
+      updatedAt: Date.now()
+    });
   };
 
-  // Compute progress for a quarterly goal
-  const qProgress = (qId: number) => {
-    const tasks = allTasks.filter(t => t.quarterlyGoalId === qId);
-    if (!tasks.length) return 0;
-    return Math.round((tasks.filter(t => t.status === 'done').length / tasks.length) * 100);
-  };
+  const renderGoalCard = (g: any, type: 'annual' | 'quarterly') => {
+    const isAnnual = type === 'annual';
+    const tasks = allTasks.filter(t => isAnnual ? (t.annualGoalId === g.id && !t.quarterlyGoalId) : t.quarterlyGoalId === g.id);
+    const progress = tasks.length ? Math.round((tasks.filter(t => t.status === 'done').length / tasks.length) * 100) : 0;
+    const isDone = g.status === 'done' || (tasks.length > 0 && progress === 100);
+    const nextTasks = tasks.filter(t => t.status !== 'done').slice(0, 3);
+    const dl = daysLeft(g.targetDate, now);
 
-  // Compute overall progress for an annual goal
-  const annualProgress = (aId: number) => {
-    const tasks = allTasks.filter(t => t.annualGoalId === aId);
-    if (!tasks.length) return 0;
-    return Math.round((tasks.filter(t => t.status === 'done').length / tasks.length) * 100);
-  };
-
-  const standaloneQ = quarterlyGoals.filter(q => !q.annualGoalId);
-
-  const QForm = ({ annualId }: { annualId?: number }) => (
-    <div className="mt-3 p-4 grid grid-cols-1 sm:grid-cols-2 gap-3"
-      style={{ background: '#161820', border: '1px solid rgba(0,219,233,0.1)', borderLeft: '2px solid #00dbe9' }}>
-      {[
-        { label: 'Goal Title', val: qTitle, set: setQTitle, ph: 'LAUNCH_VECTOR_V1' },
-        { label: 'Quarter',    val: qQuarter, set: setQQuarter, ph: 'Q3 2025' },
-        { label: 'Target Date (optional)', val: qDate, set: setQDate, ph: '', type: 'date' },
-        { label: 'Description (optional)', val: qDesc, set: setQDesc, ph: 'Key outcome...' },
-      ].map(f => (
-        <div key={f.label} className="flex flex-col gap-1">
-          <span className="font-headline font-bold text-[9px] uppercase tracking-widest text-on-surface-variant">{f.label}</span>
-          <input type={f.type ?? 'text'} value={f.val} onChange={e => f.set(e.target.value)} placeholder={f.ph}
-            className="bg-transparent border-b border-surface-container-highest font-headline font-bold text-sm text-primary placeholder:text-on-surface-variant/30 outline-none py-1.5 uppercase" />
-        </div>
-      ))}
-      {/* Subtasks array input */}
-      <div className="sm:col-span-2 flex flex-col gap-2 mt-2">
-        <span className="font-headline font-bold text-[9px] uppercase tracking-widest text-on-surface-variant mb-1">Breakdown / Steps</span>
-        {qTasks.map((t, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <span className="w-4 h-4 border border-outline-variant flex-shrink-0" />
-            <input value={t} onChange={e => {
-              const nt = [...qTasks]; nt[i] = e.target.value; setQTasks(nt);
-            }} placeholder={`Step ${i+1}`} className="flex-1 bg-transparent border-b border-surface-container-highest font-headline font-bold text-xs text-primary placeholder:text-on-surface-variant/30 outline-none py-1 uppercase" />
-            <button onClick={() => setQTasks(qTasks.filter((_, idx) => idx !== i))} className="w-6 h-6 flex items-center justify-center text-outline/30 hover:text-error transition"><Trash2 size={12}/></button>
-          </div>
-        ))}
-        <button onClick={() => setQTasks([...qTasks, ''])} className="self-start flex items-center gap-1.5 mt-1 px-3 py-1 font-headline font-bold text-[9px] text-primary-fixed-dim uppercase tracking-widest focus:outline-none" style={{ border: '1px dashed rgba(0,219,233,0.3)' }}><Plus size={10}/> Add Step</button>
-      </div>
-
-      <div className="sm:col-span-2 flex gap-2 mt-4">
-        <button onClick={() => createQuarterly(annualId)}
-          className="px-5 py-2 font-headline font-black text-xs uppercase tracking-widest active:scale-95"
-          style={{ background: '#00dbe9', color: '#002022' }}>Add Goal</button>
-        <button onClick={() => { setCreatingQ(null); setQTasks([]); }}
-          className="px-5 py-2 font-headline font-bold text-xs uppercase tracking-widest text-on-surface-variant hover:text-primary"
-          style={{ border: '1px solid #282a2e' }}>Cancel</button>
-      </div>
-    </div>
-  );
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="font-headline font-black text-xl text-primary uppercase tracking-tight">Goal Hierarchy</h2>
-        <button onClick={() => setCreatingAnnual(!creatingAnnual)}
-          className="flex items-center gap-1.5 px-3 py-2 font-headline font-bold text-[10px] text-primary-fixed-dim uppercase tracking-widest hover:bg-surface-container-high transition-all"
-          style={{ border: '1px solid rgba(0,219,233,0.2)' }}>
-          <Plus size={12} /> New Annual Goal
-        </button>
-      </div>
-
-      {/* Annual goal form */}
-      {creatingAnnual && (
-        <div className="mb-6 p-5 grid grid-cols-1 sm:grid-cols-2 gap-4"
-          style={{ background: '#1e2024', border: '1px solid rgba(0,219,233,0.15)', borderLeft: '2px solid #00f0ff' }}>
-          {[
-            { label: 'Annual Goal Title', val: aTitle, set: setATitle, ph: 'BUILD_AND_SCALE_VECTOR_OS' },
-            { label: 'Year', val: aYear, set: setAYear, ph: '2025' },
-            { label: 'Target Date (optional)', val: aDate, set: setADate, ph: '', type: 'date' },
-            { label: 'Description (optional)', val: aDesc, set: setADesc, ph: 'What does success look like?' },
-          ].map(f => (
-            <div key={f.label} className="flex flex-col gap-1">
-              <span className="font-headline font-bold text-[9px] uppercase tracking-widest text-on-surface-variant">{f.label}</span>
-              <input type={f.type ?? 'text'} value={f.val} onChange={e => f.set(e.target.value)} placeholder={f.ph}
-                className="bg-transparent border-b border-surface-container-highest font-headline font-bold text-sm text-primary placeholder:text-on-surface-variant/30 outline-none py-1.5 uppercase" />
-            </div>
-          ))}
-
-          {/* Special Annual Level Tasks (Steps) */}
-          <div className="sm:col-span-2 flex flex-col gap-2 mt-2">
-            <span className="font-headline font-bold text-[9px] uppercase tracking-widest text-on-surface-variant mb-1">Direct Master Tasks / Steps</span>
-            {aTasks.map((t, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <span className="w-4 h-4 border border-outline-variant flex-shrink-0" />
-                <input value={t} onChange={e => {
-                  const nt = [...aTasks]; nt[i] = e.target.value; setATasks(nt);
-                }} placeholder={`Step ${i+1}`} className="flex-1 bg-transparent border-b border-surface-container-highest font-headline font-bold text-xs text-primary placeholder:text-on-surface-variant/30 outline-none py-1 uppercase" />
-                <button onClick={() => setATasks(aTasks.filter((_, idx) => idx !== i))} className="w-6 h-6 flex items-center justify-center text-outline/30 hover:text-error transition"><Trash2 size={12}/></button>
-              </div>
-            ))}
-            <button onClick={() => setATasks([...aTasks, ''])} className="self-start flex items-center gap-1.5 mt-1 px-3 py-1 font-headline font-bold text-[9px] text-primary-fixed-dim uppercase tracking-widest focus:outline-none" style={{ border: '1px dashed rgba(0,219,233,0.3)' }}><Plus size={10}/> Add Step</button>
-          </div>
-
-          <div className="sm:col-span-2 flex gap-2 mt-4">
-            <button onClick={createAnnual}
-              className="px-6 py-2.5 font-headline font-black text-xs uppercase tracking-widest active:scale-95"
-              style={{ background: '#00f0ff', color: '#002022' }}>Create Goal</button>
-            <button onClick={() => { setCreatingAnnual(false); setATasks([]); }}
-              className="px-6 py-2.5 font-headline font-bold text-xs uppercase text-on-surface-variant hover:text-primary"
-              style={{ border: '1px solid #282a2e' }}>Cancel</button>
-          </div>
-        </div>
-      )}
-
-      {/* Annual goals list */}
-      <div className="space-y-4">
-        {annualGoals.map(ag => {
-          const prog   = annualProgress(ag.id!);
-          const linked = quarterlyGoals.filter(q => q.annualGoalId === ag.id);
-          const open   = expandedAnnual.has(ag.id!);
-          const sprints = allSprints.filter(s => s.annualGoalId === ag.id);
-          return (
-            <div key={ag.id} style={{ background: '#1a1c20', border: '1px solid rgba(0,219,233,0.08)', borderLeft: '3px solid #00f0ff' }}>
-              {/* Annual row */}
-              <div className="p-5 group">
-                <div className="flex items-start gap-3">
-                  <button onClick={() => toggleAnnual(ag.id!)} className="mt-1 text-primary-fixed-dim flex-shrink-0">
-                    {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                  </button>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <span className="font-body text-[9px] font-bold text-primary-fixed-dim uppercase tracking-widest">{ag.year}</span>
-                      {ag.targetDate && <span className="text-[8px] font-bold px-2 py-0.5 border text-primary-fixed-dim border-primary/20">{daysLeft(ag.targetDate)}</span>}
-                      <span className={`text-[8px] font-bold px-2 py-0.5 border ${ag.status === 'done' ? 'text-secondary border-secondary/20' : ag.status === 'at-risk' ? 'text-error border-error/30' : 'text-outline border-outline-variant'}`}>{ag.status.toUpperCase()}</span>
-                    </div>
-                    <div className="font-headline font-bold text-lg text-on-surface uppercase tracking-tight">{ag.title}</div>
-                    {ag.description && <div className="font-body text-xs text-on-surface-variant mt-0.5 leading-relaxed">{ag.description}</div>}
-                    <div className="mt-3 flex items-center gap-3">
-                      <div className="flex-1 h-1 bg-surface-container-highest overflow-hidden">
-                        <div className="h-full transition-all duration-700" style={{ width: `${prog}%`, background: prog >= 80 ? '#00e475' : '#00f0ff', boxShadow: '0 0 6px rgba(0,240,255,0.4)' }} />
-                      </div>
-                      <span className="font-headline font-bold text-xs text-primary-fixed-dim tabular-nums">{prog}%</span>
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-3 text-[9px] text-on-surface-variant">
-                      <span>{linked.length} quarterly goals</span>
-                      <span>·</span>
-                      <span>{sprints.length} sprints</span>
-                      <span>·</span>
-                      <span>{allTasks.filter(t => t.annualGoalId === ag.id).length} tasks</span>
-                    </div>
-                  </div>
-                  <button onClick={() => deleteAnnual(ag.id)}
-                    className="flex-shrink-0 w-7 h-7 flex items-center justify-center text-outline/30 hover:text-error/70 transition-colors opacity-0 group-hover:opacity-100">
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              </div>
-
-              {/* Expanded view */}
-              {open && (
-                <div className="border-t border-surface-container-high/50 px-5 py-4 space-y-3">
-                  
-                  {/* Scope: Direct Annual Tasks */}
-                  {(() => {
-                    const aTasksList = allTasks.filter(t => t.annualGoalId === ag.id && !t.quarterlyGoalId && !t.sprintId);
-                    if (aTasksList.length === 0) return null;
-                    return (
-                      <div className="mb-4">
-                        <div className="font-headline font-bold text-[9px] text-primary-fixed-dim uppercase tracking-widest mb-2">Direct Master Tasks</div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {aTasksList.map(t => (
-                            <div key={t.id} className="flex items-center gap-2 py-1 group cursor-pointer" onClick={() => toggleTask(t)}>
-                              <div className={`w-3 h-3 flex items-center justify-center border transition-all ${t.status === 'done' ? 'border-secondary bg-secondary/10 text-secondary' : 'border-outline-variant hover:border-primary'}`}>
-                                {t.status === 'done' && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="w-2 h-2"><polyline points="20 6 9 17 4 12" /></svg>}
-                              </div>
-                              <span className={`font-headline font-bold text-[10px] uppercase tracking-tight truncate transition-colors ${t.status === 'done' ? 'text-on-surface-variant/40 line-through' : 'text-on-surface-variant group-hover:text-primary'}`}>
-                                {t.label}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Scope: Quarterly Goals */}
-                  {linked.map(qg => {
-                    const qProg    = qProgress(qg.id!);
-                    const qOpen    = expandedQ.has(qg.id!);
-                    const qTasks   = allTasks.filter(t => t.quarterlyGoalId === qg.id);
-                    const qSprints = allSprints.filter(s => s.quarterlyGoalId === qg.id);
-                    return (
-                      <div key={qg.id} style={{ background: '#13151a', border: '1px solid rgba(0,219,233,0.05)', borderLeft: '2px solid #00dbe9' }}>
-                        <div className="p-4 group">
-                          <div className="flex items-start gap-3">
-                            <button onClick={() => toggleQ(qg.id!)} className="mt-0.5 text-primary flex-shrink-0">
-                              {qOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                            </button>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex flex-wrap items-center gap-2 mb-0.5">
-                                <span className="font-body text-[9px] font-bold text-on-surface-variant uppercase">{qg.quarter}</span>
-                                {qg.targetDate && <span className="text-[8px] font-bold text-on-surface-variant/60">{daysLeft(qg.targetDate)}</span>}
-                              </div>
-                              <div className={`font-headline font-bold text-sm uppercase tracking-tight ${qg.status === 'done' ? 'text-on-surface-variant/50 line-through' : 'text-on-surface'}`}>
-                                {qg.title}
-                              </div>
-                              <div className="mt-2 flex items-center gap-3">
-                                <div className="flex-1 h-0.5 bg-surface-container-highest overflow-hidden">
-                                  <div className="h-full transition-all" style={{ width: `${qProg}%`, background: qProg >= 80 ? '#00e475' : '#00dbe9' }} />
-                                </div>
-                                <span className="font-headline font-bold text-[10px] text-primary tabular-nums">{qProg}%</span>
-                              </div>
-                              <div className="mt-1 flex flex-wrap gap-2 text-[9px] text-on-surface-variant/60">
-                                <span>{qTasks.filter(t => t.status === 'done').length}/{qTasks.length} tasks</span>
-                                <span>·</span>
-                                <span>{qSprints.length} sprint{qSprints.length !== 1 ? 's' : ''}</span>
-                                {qg.targetDate && <><span>·</span><span>Target: {fmtDate(qg.targetDate)}</span></>}
-                              </div>
-                            </div>
-                            <button onClick={() => deleteQuarterly(qg.id)}
-                              className="flex-shrink-0 w-6 h-6 flex items-center justify-center text-outline/30 hover:text-error/70 transition-colors opacity-0 group-hover:opacity-100">
-                              <Trash2 size={11} />
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Task breakdown */}
-                        {qOpen && qTasks.length > 0 && (
-                          <div className="px-4 pb-4 border-t border-surface-container-highest/40">
-                            <div className="pt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              {qTasks.map(t => (
-                                <div key={t.id} className="flex items-center gap-2 py-1 group cursor-pointer" onClick={() => toggleTask(t)}>
-                                  <div className={`w-3 h-3 flex items-center justify-center border transition-all ${t.status === 'done' ? 'border-secondary bg-secondary/10 text-secondary' : 'border-outline-variant hover:border-primary'}`}>
-                                    {t.status === 'done' && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="w-2 h-2"><polyline points="20 6 9 17 4 12" /></svg>}
-                                  </div>
-                                  <span className={`font-headline font-bold text-[10px] uppercase tracking-tight truncate transition-colors ${t.status === 'done' ? 'text-on-surface-variant/40 line-through' : 'text-on-surface-variant group-hover:text-primary'}`}>
-                                    {t.label}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-
-                  {/* Add quarterly goal button */}
-                  {creatingQ === ag.id ? (
-                    <QForm annualId={ag.id} />
-                  ) : (
-                    <button onClick={() => setCreatingQ(ag.id!)}
-                      className="w-full py-2.5 flex items-center justify-center gap-1.5 font-headline font-bold text-[9px] text-primary/60 uppercase tracking-widest hover:text-primary transition-colors"
-                      style={{ border: '1px dashed rgba(0,219,233,0.15)' }}>
-                      <Plus size={10} /> Add Quarterly Goal
-                    </button>
-                  )}
+    return (
+      <div key={g.id} className={`group relative rounded-[2.5rem] p-8 transition-all duration-300 border ${isDone ? 'bg-secondary/5 border-secondary/20 shadow-[0_0_30px_rgba(0,228,117,0.05)]' : 'bg-[#16181b] border-outline-variant/10 hover:border-primary/30 hover:shadow-2xl hover:-translate-y-1'}`}>
+        
+        {/* Card Header */}
+        <div className="flex justify-between items-start mb-6">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-2">
+              <span className={`text-[9px] font-black uppercase tracking-widest ${isAnnual ? 'text-primary' : 'text-primary-fixed-dim'}`}>
+                {isAnnual ? 'Master_Directive' : 'Tactical_Target'}
+              </span>
+              {isDone && (
+                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-secondary/20 border border-secondary/30 text-[8px] font-black text-secondary uppercase animate-pulse">
+                  <Trophy size={10} /> Trophy_Status
                 </div>
               )}
             </div>
-          );
-        })}
-      </div>
-
-      {/* Standalone quarterly goals */}
-      {standaloneQ.length > 0 && (
-        <div className="mt-8">
-          <div className="font-headline font-bold text-[10px] uppercase tracking-widest text-on-surface-variant mb-3">
-            Standalone Quarterly Goals
+            <h3 className={`text-xl font-headline font-black uppercase tracking-tight leading-tight line-clamp-2 ${isDone ? 'text-secondary/70' : 'text-on-surface'}`}>
+              {g.title}
+            </h3>
           </div>
-          <div className="space-y-2">
-            {standaloneQ.map(qg => (
-              <div key={qg.id} className="flex items-center justify-between p-4 group"
-                style={{ background: '#1a1c20', border: '1px solid rgba(0,219,233,0.06)', borderLeft: '2px solid #00dbe9' }}>
-                <div className="flex-1 min-w-0">
-                  <div className="font-headline font-bold text-sm text-on-surface uppercase tracking-tight">{qg.title}</div>
-                  <div className="font-body text-[9px] text-on-surface-variant mt-0.5">{qg.quarter}</div>
-                </div>
-                <div className="flex items-center gap-3 flex-shrink-0">
-                  <span className="font-headline font-bold text-xs text-primary tabular-nums">{qProgress(qg.id!)}%</span>
-                  <button onClick={() => deleteQuarterly(qg.id)}
-                    className="w-6 h-6 flex items-center justify-center text-outline/30 hover:text-error/70 transition-colors opacity-0 group-hover:opacity-100">
-                    <Trash2 size={11} />
-                  </button>
-                </div>
+          <div className="relative w-16 h-16 flex items-center justify-center flex-shrink-0">
+            <svg className="w-full h-full -rotate-90">
+              <circle cx="32" cy="32" r="28" fill="none" stroke="currentColor" strokeWidth="4" className="text-surface-container-highest" />
+              <circle cx="32" cy="32" r="28" fill="none" stroke="currentColor" strokeWidth="4" 
+                strokeDasharray={176} strokeDashoffset={176 - (176 * progress) / 100}
+                className={`transition-all duration-1000 ${isDone ? 'text-secondary' : 'text-primary'}`} 
+                style={{ strokeLinecap: 'round' }} />
+            </svg>
+            <span className={`absolute font-headline font-black text-xs tabular-nums ${isDone ? 'text-secondary' : 'text-primary'}`}>{progress}%</span>
+          </div>
+        </div>
+
+        {/* Quick Task Strip */}
+        <div className="space-y-2 mb-6">
+          {nextTasks.length > 0 ? (
+            nextTasks.map(t => (
+              <div key={t.id} onClick={(e) => { e.stopPropagation(); toggleTask(t); }} className="flex items-center gap-3 py-1 text-on-surface-variant/40 hover:text-primary transition-colors cursor-pointer group/task">
+                <Circle size={10} className="group-hover/task:text-primary transition-colors" />
+                <span className="text-[10px] font-headline font-bold uppercase tracking-widest truncate flex-1">{t.label}</span>
+                <ChevronRight size={10} className="opacity-0 group-hover/task:opacity-100 -translate-x-2 group-hover/task:translate-x-0 transition-all" />
               </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {annualGoals.length === 0 && standaloneQ.length === 0 && !creatingAnnual && (
-        <div className="py-12 text-center" style={{ border: '1px dashed rgba(0,219,233,0.1)' }}>
-          <Target size={24} className="text-primary/20 mx-auto mb-3" />
-          <div className="font-headline font-bold text-xs text-on-surface-variant/50 uppercase tracking-widest">No goals yet</div>
-          <div className="font-body text-[10px] text-on-surface-variant/30 mt-1">Create your first annual goal above — then break it down into quarters, sprints, and tasks.</div>
-        </div>
-      )}
-
-      {/* Standalone quarterly add button */}
-      {annualGoals.length > 0 && (
-        <div className="mt-6">
-          {creatingQ === 'standalone' ? (
-            <QForm />
+            ))
+          ) : !isDone ? (
+            <div className="text-[9px] text-on-surface-variant/20 font-bold uppercase tracking-widest py-1">All tactical steps complete</div>
           ) : (
-            <button onClick={() => setCreatingQ('standalone')}
-              className="w-full py-3 flex items-center justify-center gap-1.5 font-headline font-bold text-[9px] text-on-surface-variant/50 uppercase tracking-widest hover:text-primary transition-colors"
-              style={{ border: '1px dashed rgba(0,219,233,0.1)' }}>
-              <Plus size={10} /> Add Standalone Quarterly Goal
-            </button>
+             <div className="text-[10px] text-secondary/40 font-headline font-black uppercase tracking-widest py-1 flex items-center gap-2">
+               <CheckCircle2 size={12} /> Execution_Complete
+             </div>
           )}
         </div>
-      )}
+
+        {/* Footer info */}
+        <div className="pt-6 border-t border-outline-variant/5 flex items-center justify-between">
+          <div className="flex items-center gap-4 text-[9px] font-bold text-on-surface-variant/40 uppercase tracking-widest">
+            {isAnnual ? (
+              <div className="flex items-center gap-1"><LayoutGrid size={10}/> {quarterlyGoals.filter(q => q.annualGoalId === g.id).length} Sub-Goals</div>
+            ) : (
+              <div className="flex items-center gap-1"><Calendar size={10}/> {g.quarter}</div>
+            )}
+            {dl && <div className={`flex items-center gap-1 ${dl === 'Overdue' ? 'text-error' : ''}`}><Clock size={10}/> {dl}</div>}
+          </div>
+          <button 
+            onClick={() => setSelectedGoal({ id: g.id!, type })}
+            className="px-4 py-2 rounded-xl bg-surface-container-high hover:bg-primary hover:text-black font-headline font-black text-[9px] uppercase tracking-widest transition-all"
+          >
+            Manage
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen pb-20">
+      
+      {/* Annual Directives Section */}
+      <section className="mb-14">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h2 className="text-2xl font-headline font-black text-on-surface uppercase tracking-tighter mb-1">Master Directives</h2>
+            <p className="text-[10px] text-on-surface-variant uppercase tracking-[0.3em] font-bold">Annual Macro-Objectives</p>
+          </div>
+          <button onClick={() => setCreatingAnnual(true)} className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary hover:bg-primary hover:text-black transition-all">
+            <Plus size={24} />
+          </button>
+        </div>
+
+        {creatingAnnual && (
+          <div className="mb-8 p-6 rounded-[2rem] bg-surface-container-high border border-primary/20 animate-in slide-in-from-top-2">
+            <input 
+              autoFocus
+              value={aTitle}
+              onChange={e => setATitle(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && createAnnual()}
+              placeholder="Initialize Master Directive..."
+              className="w-full bg-transparent border-none outline-none text-xl font-headline font-black text-primary uppercase placeholder:text-primary/20"
+            />
+            <div className="flex gap-2 mt-4">
+              <button onClick={createAnnual} className="px-6 py-2 bg-primary text-black font-headline font-black text-[10px] uppercase rounded-xl">Create</button>
+              <button onClick={() => setCreatingAnnual(false)} className="px-6 py-2 text-on-surface-variant font-headline font-bold text-[10px] uppercase">Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {annualGoals.length === 0 ? (
+          <div className="py-16 text-center border-2 border-dashed border-outline-variant/10 rounded-[3rem]">
+            <Target size={40} className="mx-auto text-on-surface-variant/10 mb-4" />
+            <div className="text-[11px] font-black text-on-surface-variant/30 uppercase tracking-[0.5em]">No directives issued</div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {annualGoals.map(ag => renderGoalCard(ag, 'annual'))}
+          </div>
+        )}
+      </section>
+
+      {/* Tactical Targets Section */}
+      <section>
+        <div className="flex items-center justify-between mb-8 pt-8 border-t border-outline-variant/10">
+          <div>
+            <h2 className="text-2xl font-headline font-black text-on-surface uppercase tracking-tighter mb-1">Tactical Targets</h2>
+            <p className="text-[10px] text-on-surface-variant uppercase tracking-[0.3em] font-bold">Quarterly Focus Windows</p>
+          </div>
+          <button onClick={() => setCreatingQ(true)} className="w-12 h-12 rounded-2xl bg-primary-fixed-dim/10 border border-primary-fixed-dim/20 flex items-center justify-center text-primary-fixed-dim hover:bg-primary-fixed-dim hover:text-black transition-all">
+            <Plus size={24} />
+          </button>
+        </div>
+
+        {creatingQ && (
+          <div className="mb-8 p-6 rounded-[2rem] bg-surface-container-high border border-primary-fixed-dim/20 animate-in slide-in-from-top-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <input 
+                autoFocus
+                value={qTitle}
+                onChange={e => setQTitle(e.target.value)}
+                placeholder="Initialize Tactical Target..."
+                className="w-full bg-transparent border-none outline-none text-lg font-headline font-black text-primary-fixed-dim uppercase placeholder:text-primary-fixed-dim/20"
+              />
+              <input 
+                value={qQuarter}
+                onChange={e => setQQuarter(e.target.value)}
+                placeholder="Q# YYYY"
+                className="w-full bg-transparent border-none outline-none text-lg font-headline font-black text-on-surface-variant/40 uppercase"
+              />
+            </div>
+            <div className="flex gap-2 mt-6">
+              <button onClick={createQuarterly} className="px-6 py-2 bg-primary-fixed-dim text-black font-headline font-black text-[10px] uppercase rounded-xl">Create</button>
+              <button onClick={() => setCreatingQ(false)} className="px-6 py-2 text-on-surface-variant font-headline font-bold text-[10px] uppercase">Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {quarterlyGoals.length === 0 ? (
+          <div className="py-16 text-center border-2 border-dashed border-outline-variant/10 rounded-[3rem]">
+            <Rocket size={40} className="mx-auto text-on-surface-variant/10 mb-4" />
+            <div className="text-[11px] font-black text-on-surface-variant/30 uppercase tracking-[0.5em]">No tactical windows open</div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {quarterlyGoals.map(qg => renderGoalCard(qg, 'quarterly'))}
+          </div>
+        )}
+      </section>
+
+      {/* Goal Detail Overlay */}
+      <GoalDetailOverlay 
+        goalId={selectedGoal?.id ?? null}
+        type={selectedGoal?.type ?? null}
+        onClose={() => setSelectedGoal(null)}
+      />
     </div>
   );
 };

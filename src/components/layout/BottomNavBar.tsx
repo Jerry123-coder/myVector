@@ -1,4 +1,4 @@
-import { Timer, Activity, Rocket, Terminal } from 'lucide-react';
+import { Timer, Rocket, Terminal, Wallet, Users } from 'lucide-react';
 import type { Route } from '../../App';
 
 interface BottomNavBarProps {
@@ -9,8 +9,8 @@ interface BottomNavBarProps {
 const tabs = [
   { id: 'timer' as Route, icon: Timer, label: 'Focus' },
   { id: 'goals' as Route, icon: Rocket, label: 'Goals' },
-  { id: 'metrics' as Route, icon: Activity, label: 'Velocity' },
-  { id: 'system' as Route, icon: Terminal, label: 'System' },
+  { id: 'wallet' as Route, icon: Wallet, label: 'Wallet' },
+  { id: 'people' as Route, icon: Users, label: 'People' },
 ];
 
 export const BottomNavBar = ({ currentRoute, setRoute }: BottomNavBarProps) => {

@@ -1,4 +1,4 @@
-import { Timer, Zap, BarChart3, Rocket, Terminal, Activity } from 'lucide-react';
+import { Timer, Zap, BarChart3, Rocket, Terminal, Wallet, Users } from 'lucide-react';
 import type { Route } from '../../App';
 
 interface SideNavBarProps {
@@ -8,22 +8,17 @@ interface SideNavBarProps {
 
 const navGroups = [
   {
-    label: 'Focus',
+    label: 'Execution',
     items: [
-      { id: 'timer' as Route, icon: Timer, label: 'Focus Engine' },
-      { id: 'metrics' as Route, icon: Activity, label: 'Velocity Audit' },
+      { id: 'timer' as Route, icon: Timer, label: 'Focus' },
+      { id: 'goals' as Route, icon: Rocket, label: 'Goals' },
     ],
   },
   {
-    label: 'Goals',
+    label: 'Operations',
     items: [
-      { id: 'goals' as Route, icon: Rocket, label: 'Goals & Direction' },
-    ],
-  },
-  {
-    label: 'System',
-    items: [
-      { id: 'system' as Route, icon: Terminal, label: 'System Log' },
+      { id: 'wallet' as Route, icon: Wallet, label: 'Wallet' },
+      { id: 'people' as Route, icon: Users, label: 'People' },
     ],
   },
 ];
@@ -46,7 +41,7 @@ export const SideNavBar = ({ currentRoute, setRoute }: SideNavBarProps) => {
           </span>
         </div>
         <div className="text-[10px] text-on-surface-variant/50 font-bold uppercase tracking-widest mt-1">
-          v1.0.4-stable
+          v1.2.0-stable
         </div>
       </div>
 

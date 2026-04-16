@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { db } from '../lib/db';
 
+type WindowWithWebKit = Window & { webkitAudioContext?: typeof AudioContext };
+
 type TimerState = 'idle' | 'running' | 'paused' | 'ringing' | 'completed';
 
 interface ActiveTask {
@@ -31,12 +33,14 @@ interface TimerStore {
   setActiveTask: (task: ActiveTask) => void;
 }
 
-let alarmInterval: any = null;
+let alarmInterval: ReturnType<typeof setInterval> | null = null;
 
 const startAlarmLoop = () => {
   if (alarmInterval) clearInterval(alarmInterval);
-  
-  const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+
+  const AudioCtx = window.AudioContext ?? (window as WindowWithWebKit).webkitAudioContext;
+  if (!AudioCtx) return;
+  const ctx = new AudioCtx();
   
   const playBeep = () => {
     try {
@@ -61,7 +65,9 @@ const startAlarmLoop = () => {
       playTone(659.25, 0.15, 1.2); // E5
       playTone(783.99, 0.3, 1.2);  // G5
       playTone(987.77, 0.45, 1.5); // B5
-    } catch (e) {}
+    } catch {
+      /* AudioContext may not be available or blocked */
+    }
   };
 
   playBeep(); // immediate first beep
@@ -189,11 +195,12 @@ export const useTimerStore = create<TimerStore>()(
           taskLabel: activeTask.label,
           taskId: activeTask.id,
           completedAt: now,
+          updatedAt: now,
         });
 
         // Mark task as done if linked
         if (activeTask.id) {
-          db.tasks.update(activeTask.id, { status: 'done', completedAt: now });
+          db.tasks.update(activeTask.id, { status: 'done', completedAt: now, updatedAt: now });
         }
       },
 

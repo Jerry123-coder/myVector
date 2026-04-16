@@ -1,17 +1,19 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Milestone } from '../../lib/db';
+import { nowMs } from '../../lib/time';
 import { CheckCircle2, Plus, Trash2, Flag, AlertTriangle, CalendarDays } from 'lucide-react';
 
 const fmtDate = (ms: number) =>
   new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-const daysLeft = (ms: number) => {
-  const d = Math.ceil((ms - Date.now()) / 86400000);
+const daysLeft = (ms: number, ref: number) => {
+  const d = Math.ceil((ms - ref) / 86400000);
   return d > 0 ? `${d}d left` : d === 0 ? 'Today' : 'Overdue';
 };
 
 export const MilestonesTab = () => {
+  const [now] = useState(() => Date.now());
   const milestones     = useLiveQuery(() => db.milestones.orderBy('targetDate').toArray(), []) ?? [];
   const annualGoals    = useLiveQuery(() => db.annualGoals.toArray(), []) ?? [];
   const quarterlyGoals = useLiveQuery(() => db.quarterlyGoals.toArray(), []) ?? [];
@@ -30,29 +32,29 @@ export const MilestonesTab = () => {
       title: title.trim().toUpperCase(),
       targetDate: new Date(targetDate).getTime(),
       annualGoalId: annualId, quarterlyGoalId: qId, sprintId,
-      status: 'upcoming', createdAt: Date.now(),
+      status: 'upcoming', createdAt: nowMs(), updatedAt: Date.now(),
     });
     setTitle(''); setDate(''); setAnnualId(undefined); setQId(undefined); setSprintId(undefined); setCreating(false);
   };
 
-  const toggleDone    = async (m: Milestone) => { if (m.id) await db.milestones.update(m.id, { status: m.status === 'done' ? 'upcoming' : 'done' }); };
-  const toggleAtRisk  = async (m: Milestone) => { if (m.id) await db.milestones.update(m.id, { status: m.status === 'at-risk' ? 'upcoming' : 'at-risk' }); };
+  const toggleDone    = async (m: Milestone) => { if (m.id) await db.milestones.update(m.id, { status: m.status === 'done' ? 'upcoming' : 'done', updatedAt: Date.now() }); };
+  const toggleAtRisk  = async (m: Milestone) => { if (m.id) await db.milestones.update(m.id, { status: m.status === 'at-risk' ? 'upcoming' : 'at-risk', updatedAt: Date.now() }); };
   const del           = async (id?: number)  => { if (id) await db.milestones.delete(id); };
 
-  const upcoming = milestones.filter(m => m.status !== 'done' && m.targetDate > Date.now());
-  const overdue  = milestones.filter(m => m.status !== 'done' && m.targetDate <= Date.now());
+  const upcoming = milestones.filter(m => m.status !== 'done' && m.targetDate > now);
+  const overdue  = milestones.filter(m => m.status !== 'done' && m.targetDate <= now);
   const done     = milestones.filter(m => m.status === 'done');
 
   const Row = ({ m }: { m: Milestone }) => {
-    const isOverdue = m.targetDate < Date.now() && m.status !== 'done';
+    const isOverdue = m.targetDate < now && m.status !== 'done';
     const aGoal     = annualGoals.find(g => g.id === m.annualGoalId);
     const qGoal     = quarterlyGoals.find(g => g.id === m.quarterlyGoalId);
     const sprint    = sprints.find(s => s.id === m.sprintId);
 
     return (
-      <div className={`group flex items-start justify-between p-4 border-l-2 transition-all ${
-        m.status === 'done' ? 'border-secondary/40' : isOverdue || m.status === 'at-risk' ? 'border-error/60' : 'border-primary-fixed-dim/40'
-      }`} style={{ background: m.status === 'done' ? '#121a14' : '#1e2024' }}>
+      <div className={`group flex items-start justify-between p-4 rounded-2xl border-l-4 shadow-sm mb-3 transition-all ${
+        m.status === 'done' ? 'border-secondary/40 bg-[#121a14]' : isOverdue || m.status === 'at-risk' ? 'border-error/60 bg-[#1e2024]' : 'border-primary-fixed-dim/40 bg-[#16181b] hover:bg-[#1a1c20]'
+      }`}>
         <div className="flex items-start gap-3 flex-1 min-w-0">
           <button onClick={() => toggleDone(m)}
             className={`mt-0.5 w-7 h-7 flex-shrink-0 flex items-center justify-center border-2 transition-all ${
@@ -66,7 +68,7 @@ export const MilestonesTab = () => {
             </div>
             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
               <span className={`font-body text-[9px] font-bold ${isOverdue && m.status !== 'done' ? 'text-error' : m.status === 'done' ? 'text-secondary' : 'text-on-surface-variant'}`}>
-                {m.status === 'done' ? '✓ Done' : `${fmtDate(m.targetDate)} · ${daysLeft(m.targetDate)}`}
+                {m.status === 'done' ? '✓ Done' : `${fmtDate(m.targetDate)} · ${daysLeft(m.targetDate, now)}`}
               </span>
               {aGoal && <span className="text-[8px] text-primary/60 border border-primary/10 px-1.5 py-0.5">{aGoal.title}</span>}
               {qGoal && <span className="text-[8px] text-primary/40 border border-primary/10 px-1.5 py-0.5">{qGoal.title}</span>}
@@ -114,20 +116,30 @@ export const MilestonesTab = () => {
             <input type="date" value={targetDate} onChange={e => setDate(e.target.value)}
               className="bg-transparent border-b border-surface-container-highest font-headline font-bold text-sm text-primary outline-none py-1.5" />
           </div>
-          {[
-            { label: 'Annual Goal', val: annualId, set: setAnnualId as any, opts: annualGoals },
-            { label: 'Quarterly Goal', val: qId, set: setQId as any, opts: quarterlyGoals },
-            { label: 'Sprint', val: sprintId, set: setSprintId as any, opts: sprints },
-          ].map(f => (
-            <div key={f.label} className="flex flex-col gap-1">
-              <span className="font-headline font-bold text-[9px] uppercase tracking-widest text-on-surface-variant">{f.label} (optional)</span>
-              <select value={f.val ?? ''} onChange={e => f.set(Number(e.target.value) || undefined)}
-                className="bg-transparent border-b border-surface-container-highest font-headline font-bold text-sm text-primary uppercase outline-none py-1.5">
-                <option value="">— None —</option>
-                {f.opts.map((o: any) => <option key={o.id} value={o.id}>{o.title ?? o.name}</option>)}
-              </select>
-            </div>
-          ))}
+          <div className="flex flex-col gap-1">
+            <span className="font-headline font-bold text-[9px] uppercase tracking-widest text-on-surface-variant">Annual Goal (optional)</span>
+            <select value={annualId ?? ''} onChange={e => setAnnualId(Number(e.target.value) || undefined)}
+              className="bg-transparent border-b border-surface-container-highest font-headline font-bold text-sm text-primary uppercase outline-none py-1.5">
+              <option value="">— None —</option>
+              {annualGoals.map(g => <option key={g.id} value={g.id}>{g.title}</option>)}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="font-headline font-bold text-[9px] uppercase tracking-widest text-on-surface-variant">Quarterly Goal (optional)</span>
+            <select value={qId ?? ''} onChange={e => setQId(Number(e.target.value) || undefined)}
+              className="bg-transparent border-b border-surface-container-highest font-headline font-bold text-sm text-primary uppercase outline-none py-1.5">
+              <option value="">— None —</option>
+              {quarterlyGoals.map(g => <option key={g.id} value={g.id}>{g.title}</option>)}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="font-headline font-bold text-[9px] uppercase tracking-widest text-on-surface-variant">Sprint (optional)</span>
+            <select value={sprintId ?? ''} onChange={e => setSprintId(Number(e.target.value) || undefined)}
+              className="bg-transparent border-b border-surface-container-highest font-headline font-bold text-sm text-primary uppercase outline-none py-1.5">
+              <option value="">— None —</option>
+              {sprints.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
           <div className="sm:col-span-2 flex gap-2">
             <button onClick={create}
               className="px-6 py-2.5 font-headline font-black text-xs uppercase tracking-widest active:scale-95"

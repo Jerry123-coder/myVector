@@ -1,0 +1,270 @@
+import { X, Target, Calendar, CheckCircle2, Circle, Clock, Trash2, Plus, Flag, Rocket } from 'lucide-react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db, type Task, type Milestone } from '../../lib/db';
+import { useState } from 'react';
+import { nowMs } from '../../lib/time';
+
+interface GoalDetailOverlayProps {
+  goalId: number | null;
+  type: 'annual' | 'quarterly' | null;
+  onClose: () => void;
+}
+
+export const GoalDetailOverlay = ({ goalId, type, onClose }: GoalDetailOverlayProps) => {
+  const [newTask, setNewTask] = useState('');
+
+  // Queries
+  const goal = useLiveQuery(
+    () => {
+      if (!goalId || !type) return null;
+      return type === 'annual' ? db.annualGoals.get(goalId) : db.quarterlyGoals.get(goalId);
+    },
+    [goalId, type]
+  );
+
+  const subGoals = useLiveQuery(
+    () => (type === 'annual' && goalId ? db.quarterlyGoals.where('annualGoalId').equals(goalId).toArray() : []),
+    [goalId, type]
+  );
+
+  const tasks = useLiveQuery(
+    () => {
+      if (!goalId || !type) return [];
+      return type === 'annual' 
+        ? db.tasks.where('annualGoalId').equals(goalId).filter(t => !t.quarterlyGoalId).toArray()
+        : db.tasks.where('quarterlyGoalId').equals(goalId).toArray();
+    },
+    [goalId, type]
+  );
+
+  const milestones = useLiveQuery(
+    () => {
+      if (!goalId || !type) return [];
+      return type === 'annual'
+        ? db.milestones.where('annualGoalId').equals(goalId).toArray()
+        : db.milestones.where('quarterlyGoalId').equals(goalId).toArray();
+    },
+    [goalId, type]
+  );
+
+  const sprints = useLiveQuery(
+    () => {
+      if (!goalId || !type) return [];
+      return type === 'annual'
+        ? db.sprints.where('annualGoalId').equals(goalId).toArray()
+        : db.sprints.where('quarterlyGoalId').equals(goalId).toArray();
+    },
+    [goalId, type]
+  );
+
+  if (!goalId || !goal) return null;
+
+  const toggleTask = async (task: Task) => {
+    if (!task.id) return;
+    await db.tasks.update(task.id, {
+      status: task.status === 'done' ? 'pending' : 'done',
+      completedAt: task.status === 'done' ? undefined : nowMs(),
+      updatedAt: Date.now()
+    });
+  };
+
+  const addTask = async () => {
+    if (!newTask.trim() || !goalId) return;
+    await db.tasks.add({
+      label: newTask.trim().toUpperCase(),
+      status: 'pending',
+      priority: 'MED',
+      annualGoalId: type === 'annual' ? goalId : (goal as any).annualGoalId,
+      quarterlyGoalId: type === 'quarterly' ? goalId : undefined,
+      createdAt: nowMs(),
+      updatedAt: Date.now()
+    });
+    setNewTask('');
+  };
+
+  const deleteGoal = async () => {
+    if (!window.confirm("Are you sure you want to terminate this directive? All linked data will persist but the goal will be removed.")) return;
+    if (type === 'annual') await db.annualGoals.delete(goalId);
+    else await db.quarterlyGoals.delete(goalId);
+    onClose();
+  };
+
+  const progress = tasks?.length ? Math.round((tasks.filter(t => t.status === 'done').length / tasks.length) * 100) : 0;
+
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 md:p-8 animate-in fade-in zoom-in duration-300">
+      <div className="absolute inset-0 bg-[#0B0E12]/98 backdrop-blur-3xl" onClick={onClose} />
+      
+      <div className="relative w-full max-w-5xl h-full max-h-[90vh] bg-[#16181b] border border-outline-variant/10 rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden">
+        
+        {/* Header Section */}
+        <div className="p-8 md:p-10 border-b border-outline-variant/10 flex items-start justify-between bg-surface-container/20">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-black text-primary uppercase tracking-widest">
+                {type?.toUpperCase()}_DIRECTIVE
+              </div>
+              {goal.targetDate && (
+                <div className="flex items-center gap-2 text-on-surface-variant/60 text-[10px] font-bold uppercase tracking-widest">
+                  <Clock size={12} /> {new Date(goal.targetDate).toLocaleDateString()}
+                </div>
+              )}
+            </div>
+            <h1 className="text-3xl md:text-4xl font-headline font-black text-on-surface uppercase tracking-tight leading-none mb-4">
+              {goal.title}
+            </h1>
+            <p className="text-sm text-on-surface-variant/80 max-w-2xl font-body leading-relaxed">
+              {goal.description || "No tactical description provided for this directive."}
+            </p>
+          </div>
+          <div className="flex flex-col items-end gap-4">
+             <button onClick={onClose} className="p-3 rounded-2xl bg-surface-container-high hover:bg-surface-container-highest transition-colors">
+               <X className="text-on-surface-variant" size={24} />
+             </button>
+             <button onClick={deleteGoal} className="flex items-center gap-2 text-error/40 hover:text-error transition-colors text-[10px] font-bold uppercase tracking-widest">
+                <Trash2 size={12} /> Terminate
+             </button>
+          </div>
+        </div>
+
+        {/* Content Body */}
+        <div className="flex-1 overflow-y-auto p-8 md:p-10 no-scrollbar">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+            
+            {/* Left Column: Tactics & Work */}
+            <div className="lg:col-span-8 space-y-10">
+              
+              {/* Progress Pulse */}
+              <div className="p-8 rounded-[2rem] bg-surface-container/10 border border-outline-variant/5">
+                <div className="flex justify-between items-end mb-4">
+                  <span className="text-[11px] font-black text-on-surface-variant uppercase tracking-[0.2em]">Execution Velocity</span>
+                  <span className="text-3xl font-headline font-black text-primary tabular-nums">{progress}%</span>
+                </div>
+                <div className="h-3 w-full bg-surface-container-highest rounded-full overflow-hidden">
+                  <div className="h-full rounded-full bg-primary transition-all duration-1000" style={{ width: `${progress}%`, boxShadow: '0 0 20px rgba(0,219,233,0.3)' }} />
+                </div>
+              </div>
+
+              {/* Work Backlog */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between px-2">
+                  <h3 className="text-xs font-black text-on-surface uppercase tracking-widest">Work Backlog</h3>
+                  <span className="text-[10px] text-on-surface-variant/40 font-bold uppercase">{tasks.length} Items</span>
+                </div>
+                
+                {/* Add Task Inline */}
+                <div className="flex items-center gap-3 p-2 bg-surface-container/20 rounded-2xl border border-dashed border-outline-variant/20 hover:border-primary/30 transition-all group focus-within:border-primary/50">
+                  <div className="w-10 h-10 flex items-center justify-center text-primary/30 group-hover:text-primary transition-colors">
+                    <Plus size={20} />
+                  </div>
+                  <input 
+                    value={newTask}
+                    onChange={e => setNewTask(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && addTask()}
+                    placeholder="Log a new tactical step..."
+                    className="flex-1 bg-transparent border-none outline-none text-sm font-headline font-bold text-primary uppercase placeholder:text-on-surface-variant/20"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  {tasks.map(t => (
+                    <div key={t.id} onClick={() => toggleTask(t)} className="flex items-center gap-4 p-5 rounded-2xl bg-surface-container/30 border border-outline-variant/5 hover:bg-surface-container-high transition-all cursor-pointer group">
+                      <div className={`w-6 h-6 rounded-lg border flex items-center justify-center transition-all ${t.status === 'done' ? 'bg-secondary border-secondary' : 'border-outline-variant group-hover:border-primary'}`}>
+                        {t.status === 'done' && <CheckCircle2 size={14} className="text-black" />}
+                      </div>
+                      <span className={`flex-1 text-sm font-headline font-bold uppercase tracking-tight transition-all ${t.status === 'done' ? 'text-on-surface-variant/40 line-through' : 'text-on-surface'}`}>
+                        {t.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sub-Directives (If Annual) */}
+              {type === 'annual' && subGoals.length > 0 && (
+                <div className="space-y-4">
+                  <h3 className="text-xs font-black text-on-surface uppercase tracking-widest px-2">Tactical Targets (Quarterly)</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {subGoals.map(sg => (
+                      <div key={sg.id} className="p-6 rounded-[1.5rem] bg-[#1a1c20] border border-outline-variant/10 hover:border-primary/30 transition-all cursor-pointer">
+                        <div className="text-[10px] font-bold text-on-surface-variant/50 uppercase mb-2">{sg.quarter}</div>
+                        <div className="text-sm font-headline font-black text-on-surface uppercase mb-3 line-clamp-2">{sg.title}</div>
+                        <div className="h-1 w-full bg-surface-container rounded-full overflow-hidden">
+                          <div className="h-full bg-primary" style={{ width: '40%' }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Right Column: Context & Milestones */}
+            <div className="lg:col-span-4 space-y-8">
+              
+              {/* Context Block */}
+              <div className="p-8 rounded-[2rem] bg-[#0c0e12] border border-outline-variant/5 space-y-6">
+                <div>
+                  <div className="text-[9px] font-black text-on-surface-variant/50 uppercase tracking-widest mb-4 flex items-center gap-2">
+                    <Flag size={12} className="text-primary" /> Anchor Milestones
+                  </div>
+                  <div className="space-y-4">
+                    {milestones.length === 0 ? (
+                      <div className="text-[10px] font-bold text-on-surface-variant/20 uppercase tracking-widest py-4 border border-dashed border-outline-variant/5 rounded-xl text-center">No Anchors Set</div>
+                    ) : (
+                      milestones.map(m => (
+                        <div key={m.id} className="flex gap-3">
+                          <div className="w-px bg-outline-variant/10 relative">
+                             <div className="absolute top-0 -left-1 w-2 h-2 rounded-full bg-primary" />
+                          </div>
+                          <div>
+                            <div className="text-[10px] font-black text-on-surface uppercase tracking-tight">{m.title}</div>
+                            <div className="text-[9px] text-on-surface-variant font-bold uppercase">{new Date(m.targetDate).toLocaleDateString()}</div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div className="pt-6 border-t border-outline-variant/5">
+                  <div className="text-[9px] font-black text-on-surface-variant/50 uppercase tracking-widest mb-4 flex items-center gap-2">
+                    <Rocket size={12} className="text-secondary" /> Active Sprints
+                  </div>
+                  <div className="space-y-3">
+                    {sprints.map(s => (
+                      <div key={s.id} className="p-4 rounded-xl bg-surface-container-high/40 border border-outline-variant/5">
+                         <div className="text-[10px] font-black text-secondary uppercase tracking-widest mb-1">{s.name}</div>
+                         <div className="text-[9px] text-on-surface-variant font-bold uppercase">{Math.ceil((s.endDate - nowMs()) / 86400000)} Days Remaining</div>
+                      </div>
+                    ))}
+                    {sprints.length === 0 && (
+                       <div className="text-[10px] font-bold text-on-surface-variant/20 uppercase tracking-widest py-4 bg-surface-container/10 border border-outline-variant/5 rounded-xl text-center">No Active Sprints</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* System Note */}
+              <div className="p-6 rounded-[1.5rem] bg-primary/5 border border-primary/10">
+                <ShieldInfo size={20} className="text-primary/40 mb-3" />
+                <p className="text-[10px] font-bold text-on-surface-variant/60 uppercase leading-relaxed font-body">
+                  Maintain discipline. This directive represents a core pillar of your growth architecture. Initialize focus sessions relative to these tasks to ensure linear progression.
+                </p>
+              </div>
+
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+};
+
+const ShieldInfo = ({ size, className }: { size: number, className?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" /><path d="M12 8h.01" /><path d="M12 12v4" />
+  </svg>
+)

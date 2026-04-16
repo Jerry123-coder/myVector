@@ -39,7 +39,7 @@ export const DevTools = () => {
           </button>
 
           <div className="text-[8px] text-on-surface-variant/30 leading-relaxed pt-2 border-t border-surface-container-high">
-            DEV MODE // VECTOR_OS v1.0.4
+            DEV MODE // VECTOR_OS v1.2.0
           </div>
         </div>
       )}
