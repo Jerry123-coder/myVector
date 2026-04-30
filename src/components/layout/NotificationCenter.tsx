@@ -1,4 +1,4 @@
-import { X, Bell, Target, Rocket, Zap, Clock, ShieldAlert } from 'lucide-react';
+import { X, Bell, Target, Rocket, Zap, ShieldAlert } from 'lucide-react';
 
 interface NotificationCenterProps {
   isOpen: boolean;

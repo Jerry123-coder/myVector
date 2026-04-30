@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle2, Plus, Trash2, Star, Target, CheckSquare, Zap } from 'lucide-react';
+import { CheckCircle2, Plus, Trash2, Star, Target, CheckSquare, Zap, Edit3 } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, todayStr, type Sprint, type Task } from '../../lib/db';
 
@@ -15,14 +15,27 @@ export const TodayTab = ({ activeSprint }: Props) => {
 
   const [showAdd, setShowAdd] = useState(false);
   const [label,   setLabel]   = useState('');
-
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editLabel, setEditLabel] = useState('');
+  
   const done   = daily.filter(t => t.done).length;
 
   const add = async (lbl: string, taskId?: number) => {
     const clean = lbl.trim();
     if (!clean) return;
-    await db.dailyTasks.add({ date: today, label: clean, taskId, done: false, order: daily.length, updatedAt: Date.now() });
+    await db.dailyTasks.add({
+      date: today, label: clean, taskId, done: false, order: daily.length,
+      category: 'deep-work', updatedAt: Date.now(),
+    });
     setLabel(''); setShowAdd(false);
+  };
+
+  const updateLabel = async (id: number) => {
+    const clean = editLabel.trim();
+    if (clean) {
+      await db.dailyTasks.update(id, { label: clean, updatedAt: Date.now() });
+    }
+    setEditingId(null);
   };
 
   const toggle = async (id?: number, cur?: boolean) => {
@@ -44,13 +57,38 @@ export const TodayTab = ({ activeSprint }: Props) => {
         className={`w-6 h-6 shrink-0 flex items-center justify-center rounded transition-all border ${task.done ? 'border-secondary bg-secondary/10' : isPrimary ? 'border-primary hover:bg-primary/20' : 'border-outline/50 hover:border-primary'}`}>
         {task.done && <CheckCircle2 size={14} className="text-secondary" />}
       </button>
-      <span className={`flex-1 font-headline font-bold text-sm tracking-wide break-words ${task.done ? 'line-through text-on-surface-variant/40' : 'text-on-surface'}`}>
-        {task.label}
-      </span>
-      <button onClick={() => remove(task.id)}
-        className="w-8 h-8 shrink-0 flex items-center justify-center rounded-lg text-outline/30 hover:text-error hover:bg-error/10 transition-colors opacity-0 group-hover:opacity-100">
-        <Trash2 size={14} />
-      </button>
+      
+      {editingId === task.id ? (
+        <input 
+          autoFocus
+          value={editLabel}
+          onChange={e => setEditLabel(e.target.value)}
+          onBlur={() => updateLabel(task.id!)}
+          onKeyDown={e => e.key === 'Enter' && updateLabel(task.id!)}
+          className="flex-1 bg-transparent font-headline font-bold text-sm tracking-wide text-primary outline-none border-b border-primary/30 py-0.5"
+        />
+      ) : (
+        <span 
+          onClick={() => toggle(task.id, task.done)}
+          className={`flex-1 font-headline font-bold text-sm tracking-wide break-words cursor-pointer ${task.done ? 'line-through text-on-surface-variant/40' : 'text-on-surface'}`}>
+          {task.label}
+        </span>
+      )}
+
+      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        {!task.done && editingId !== task.id && (
+          <button 
+            onClick={() => { setEditingId(task.id!); setEditLabel(task.label); }}
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-outline/30 hover:text-primary hover:bg-primary/10 transition-colors"
+          >
+            <Edit3 size={14} />
+          </button>
+        )}
+        <button onClick={() => remove(task.id)}
+          className="w-8 h-8 flex items-center justify-center rounded-lg text-outline/30 hover:text-error hover:bg-error/10 transition-colors">
+          <Trash2 size={14} />
+        </button>
+      </div>
     </div>
   );
 

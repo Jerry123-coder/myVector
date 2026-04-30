@@ -24,16 +24,14 @@ export const MetricsView = ({ isEmbedded }: { isEmbedded?: boolean }) => {
     return d.getTime();
   }, [now]);
 
-  const allSessions = useLiveQuery(() => db.sessions.orderBy('completedAt').reverse().toArray(), []);
+  const allSessions = useLiveQuery(() => db.sessions.where('type').equals('focus').reverse().toArray(), []);
   const allTasks    = useLiveQuery(() => db.tasks.toArray(), []);
 
   const totalSecs  = allSessions?.reduce((s, x) => s + x.actualSecs, 0) ?? 0;
   const todaySecs  = allSessions?.filter(s => s.completedAt >= startOfToday).reduce((s, x) => s + x.actualSecs, 0) ?? 0;
   
   const doneTasks    = allTasks?.filter(t => t.status === 'done').length ?? 0;
-  const totalTasks   = allTasks?.length ?? 0;
-  const completionRate = totalTasks > 0 ? Math.round((doneTasks/totalTasks)*100) : 0;
-  
+
   const completedSessions = allSessions?.filter(s => s.actualSecs >= s.durationSecs * 0.9) ?? [];
   const focusIntegrity = allSessions?.length ? Math.round((completedSessions.length / allSessions.length) * 100) : 0;
 
@@ -81,39 +79,35 @@ export const MetricsView = ({ isEmbedded }: { isEmbedded?: boolean }) => {
       for (let i = 6; i >= 0; i--) {
          const msAgo = i * 86400000;
          const dStart = new Date(now - msAgo).setHours(0,0,0,0);
-         const secs = allSessions.filter(s => s.completedAt >= dStart && s.completedAt < dStart + 86400000).reduce((s,x)=>s+x.actualSecs, 0);
+         const dayEnd = dStart + 86400000;
+         const secs = allSessions.filter(s => s.completedAt >= dStart && s.completedAt < dayEnd).reduce((s,x)=>s+x.actualSecs, 0);
          const dayStr = ['SUN','MON','TUE','WED','THU','FRI','SAT'][new Date(dStart).getDay()];
          bars.push({ label: i === 0 ? 'TODAY' : dayStr, secs, isFocus: i === 0 });
       }
-    } else if (timeRange === '30D') {
+    } else if (timeRange === '30D') { // Tracking Weekly Volumes
       rangeMs = 30 * 86400000;
-      for (let i = 29; i >= 0; i--) {
-        const msAgo = i * 86400000;
-        const dStart = new Date(now - msAgo).setHours(0,0,0,0);
-        const secs = allSessions.filter(s => s.completedAt >= dStart && s.completedAt < dStart + 86400000).reduce((s,x)=>s+x.actualSecs, 0);
-        const md = new Date(dStart);
-        bars.push({ label: `${md.getDate()}`, secs, isFocus: i === 0 });
-      }
-    } else if (timeRange === '90D') { // 12 weeks
-      rangeMs = 90 * 86400000;
-      for (let i = 11; i >= 0; i--) {
+      for (let i = 3; i >= 0; i--) {
         const startOfWk = new Date(now - (i+1)*7*86400000).getTime();
         const endOfWk = new Date(now - i*7*86400000).getTime();
         const secs = allSessions.filter(s => s.completedAt >= startOfWk && s.completedAt < endOfWk).reduce((s,x)=>s+x.actualSecs, 0);
-        bars.push({ label: `W${12-i}`, secs, isFocus: i === 0 });
+        bars.push({ label: i === 0 ? 'THIS WEEK' : `W-${i}`, secs, isFocus: i === 0 });
       }
-    } else if (timeRange === '365D') { // 12 months
+    } else if (timeRange === '90D') { // Sprints for the Quarter
+      rangeMs = 90 * 86400000;
+      // 6 sprints of 2 weeks
+      for (let i = 5; i >= 0; i--) {
+        const startOfSpr = new Date(now - (i+1)*14*86400000).getTime();
+        const endOfSpr = new Date(now - i*14*86400000).getTime();
+        const secs = allSessions.filter(s => s.completedAt >= startOfSpr && s.completedAt < endOfSpr).reduce((s,x)=>s+x.actualSecs, 0);
+        bars.push({ label: `SPRINT ${6-i}`, secs, isFocus: i === 0 });
+      }
+    } else if (timeRange === '365D') { // Months for the Year
       rangeMs = 365 * 86400000;
-      const curMonth = new Date(now).getMonth();
-      for (let i = 11; i >= 0; i--) {
-        const d = new Date(now);
-        d.setMonth(curMonth - i);
-        const filterVal = d.getMonth() + '_' + d.getFullYear();
-        const secs = allSessions.filter(s => {
-           const sd = new Date(s.completedAt);
-           return (sd.getMonth() + '_' + sd.getFullYear()) === filterVal;
-        }).reduce((s,x)=>s+x.actualSecs, 0);
-        bars.push({ label: ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'][d.getMonth()], secs, isFocus: i === 0 });
+      for (let i = 3; i >= 0; i--) { // Quarters
+        const qStart = new Date(now - (i+1)*90*86400000).getTime();
+        const qEnd = new Date(now - i*90*86400000).getTime();
+        const secs = allSessions.filter(s => s.completedAt >= qStart && s.completedAt < qEnd).reduce((s,x)=>s+x.actualSecs, 0);
+        bars.push({ label: `Q${4-i}`, secs, isFocus: i === 0 });
       }
     }
 

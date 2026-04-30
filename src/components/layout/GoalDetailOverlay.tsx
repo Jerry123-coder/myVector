@@ -1,6 +1,6 @@
-import { X, Target, Calendar, CheckCircle2, Circle, Clock, Trash2, Plus, Flag, Rocket } from 'lucide-react';
+import { X, CheckCircle2, Clock, Trash2, Plus, Flag, Rocket, Pin } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, type Task, type Milestone } from '../../lib/db';
+import { db, type Task, type AnnualGoal, type QuarterlyGoal } from '../../lib/db';
 import { useState } from 'react';
 import { nowMs } from '../../lib/time';
 
@@ -13,14 +13,17 @@ interface GoalDetailOverlayProps {
 export const GoalDetailOverlay = ({ goalId, type, onClose }: GoalDetailOverlayProps) => {
   const [newTask, setNewTask] = useState('');
 
-  // Queries
-  const goal = useLiveQuery(
-    () => {
-      if (!goalId || !type) return null;
-      return type === 'annual' ? db.annualGoals.get(goalId) : db.quarterlyGoals.get(goalId);
-    },
+  // Queries (split so useLiveQuery infers a single entity type per subscription)
+  const annualGoal = useLiveQuery(
+    () => (type === 'annual' && goalId ? db.annualGoals.get(goalId) : undefined),
     [goalId, type]
   );
+  const quarterlyGoal = useLiveQuery(
+    () => (type === 'quarterly' && goalId ? db.quarterlyGoals.get(goalId) : undefined),
+    [goalId, type]
+  );
+  const goal: AnnualGoal | QuarterlyGoal | undefined =
+    type === 'annual' ? annualGoal : type === 'quarterly' ? quarterlyGoal : undefined;
 
   const subGoals = useLiveQuery(
     () => (type === 'annual' && goalId ? db.quarterlyGoals.where('annualGoalId').equals(goalId).toArray() : []),
@@ -57,6 +60,11 @@ export const GoalDetailOverlay = ({ goalId, type, onClose }: GoalDetailOverlayPr
     [goalId, type]
   );
 
+  const taskList = tasks ?? [];
+  const subGoalList = subGoals ?? [];
+  const milestoneList = milestones ?? [];
+  const sprintList = sprints ?? [];
+
   if (!goalId || !goal) return null;
 
   const toggleTask = async (task: Task) => {
@@ -89,7 +97,25 @@ export const GoalDetailOverlay = ({ goalId, type, onClose }: GoalDetailOverlayPr
     onClose();
   };
 
-  const progress = tasks?.length ? Math.round((tasks.filter(t => t.status === 'done').length / tasks.length) * 100) : 0;
+  const togglePin = async () => {
+    if (!goalId || !type) return;
+    const table = type === 'annual' ? db.annualGoals : db.quarterlyGoals;
+    
+    // Unpin others if we are pinning this one (optional, but cleaner for "Primary Mission")
+    if (!goal.isPinned) {
+      await db.annualGoals.filter((g) => !!g.isPinned).modify({ isPinned: false });
+      await db.quarterlyGoals.filter((g) => !!g.isPinned).modify({ isPinned: false });
+    }
+
+    await table.update(goalId, { isPinned: !goal.isPinned, updatedAt: Date.now() });
+  };
+
+  const updateCategory = async (cat: AnnualGoal['category']) => {
+    if (type !== 'annual' || !goalId) return;
+    await db.annualGoals.update(goalId, { category: cat, updatedAt: Date.now() });
+  };
+
+  const progress = taskList.length ? Math.round((taskList.filter(t => t.status === 'done').length / taskList.length) * 100) : 0;
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 md:p-8 animate-in fade-in zoom-in duration-300">
@@ -109,10 +135,41 @@ export const GoalDetailOverlay = ({ goalId, type, onClose }: GoalDetailOverlayPr
                   <Clock size={12} /> {new Date(goal.targetDate).toLocaleDateString()}
                 </div>
               )}
+              <button 
+                onClick={togglePin}
+                className={`flex items-center gap-2 px-3 py-1 rounded-sm border transition-all text-[9px] font-black uppercase tracking-widest ${
+                  goal.isPinned 
+                    ? 'bg-tertiary-fixed-dim text-black border-tertiary-fixed-dim shadow-[0_0_15px_rgba(255,186,56,0.3)]' 
+                    : 'bg-surface-container-high text-on-surface-variant border-outline-variant/30 hover:border-tertiary-fixed-dim'
+                }`}
+              >
+                <Pin size={10} fill={goal.isPinned ? "currentColor" : "none"} />
+                {goal.isPinned ? "Pinned_Priority" : "Pin_Objective"}
+              </button>
             </div>
             <h1 className="text-3xl md:text-4xl font-headline font-black text-on-surface uppercase tracking-tight leading-none mb-4">
               {goal.title}
             </h1>
+            
+            {/* Category Selector (Annual only) */}
+            {type === 'annual' && (
+              <div className="flex flex-wrap gap-2 mb-6">
+                {(['CRAFT', 'FINANCE', 'HEALTH', 'SOCIAL', 'CHARACTER', 'OTHER'] as const).map(cat => (
+                  <button
+                    key={cat}
+                    onClick={() => updateCategory(cat)}
+                    className={`px-3 py-1.5 rounded-sm border text-[9px] font-black uppercase tracking-widest transition-all ${
+                      (goal as any).category === cat
+                        ? 'bg-primary/20 border-primary text-primary'
+                        : 'bg-surface-container-high border-outline-variant/30 text-on-surface-variant/60 hover:border-primary/20'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <p className="text-sm text-on-surface-variant/80 max-w-2xl font-body leading-relaxed">
               {goal.description || "No tactical description provided for this directive."}
             </p>
@@ -149,7 +206,7 @@ export const GoalDetailOverlay = ({ goalId, type, onClose }: GoalDetailOverlayPr
               <div className="space-y-4">
                 <div className="flex items-center justify-between px-2">
                   <h3 className="text-xs font-black text-on-surface uppercase tracking-widest">Work Backlog</h3>
-                  <span className="text-[10px] text-on-surface-variant/40 font-bold uppercase">{tasks.length} Items</span>
+                  <span className="text-[10px] text-on-surface-variant/40 font-bold uppercase">{taskList.length} Items</span>
                 </div>
                 
                 {/* Add Task Inline */}
@@ -167,7 +224,7 @@ export const GoalDetailOverlay = ({ goalId, type, onClose }: GoalDetailOverlayPr
                 </div>
 
                 <div className="space-y-2">
-                  {tasks.map(t => (
+                  {taskList.map(t => (
                     <div key={t.id} onClick={() => toggleTask(t)} className="flex items-center gap-4 p-5 rounded-2xl bg-surface-container/30 border border-outline-variant/5 hover:bg-surface-container-high transition-all cursor-pointer group">
                       <div className={`w-6 h-6 rounded-lg border flex items-center justify-center transition-all ${t.status === 'done' ? 'bg-secondary border-secondary' : 'border-outline-variant group-hover:border-primary'}`}>
                         {t.status === 'done' && <CheckCircle2 size={14} className="text-black" />}
@@ -181,11 +238,11 @@ export const GoalDetailOverlay = ({ goalId, type, onClose }: GoalDetailOverlayPr
               </div>
 
               {/* Sub-Directives (If Annual) */}
-              {type === 'annual' && subGoals.length > 0 && (
+              {type === 'annual' && subGoalList.length > 0 && (
                 <div className="space-y-4">
                   <h3 className="text-xs font-black text-on-surface uppercase tracking-widest px-2">Tactical Targets (Quarterly)</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {subGoals.map(sg => (
+                    {subGoalList.map(sg => (
                       <div key={sg.id} className="p-6 rounded-[1.5rem] bg-[#1a1c20] border border-outline-variant/10 hover:border-primary/30 transition-all cursor-pointer">
                         <div className="text-[10px] font-bold text-on-surface-variant/50 uppercase mb-2">{sg.quarter}</div>
                         <div className="text-sm font-headline font-black text-on-surface uppercase mb-3 line-clamp-2">{sg.title}</div>
@@ -209,10 +266,10 @@ export const GoalDetailOverlay = ({ goalId, type, onClose }: GoalDetailOverlayPr
                     <Flag size={12} className="text-primary" /> Anchor Milestones
                   </div>
                   <div className="space-y-4">
-                    {milestones.length === 0 ? (
+                    {milestoneList.length === 0 ? (
                       <div className="text-[10px] font-bold text-on-surface-variant/20 uppercase tracking-widest py-4 border border-dashed border-outline-variant/5 rounded-xl text-center">No Anchors Set</div>
                     ) : (
-                      milestones.map(m => (
+                      milestoneList.map(m => (
                         <div key={m.id} className="flex gap-3">
                           <div className="w-px bg-outline-variant/10 relative">
                              <div className="absolute top-0 -left-1 w-2 h-2 rounded-full bg-primary" />
@@ -232,13 +289,13 @@ export const GoalDetailOverlay = ({ goalId, type, onClose }: GoalDetailOverlayPr
                     <Rocket size={12} className="text-secondary" /> Active Sprints
                   </div>
                   <div className="space-y-3">
-                    {sprints.map(s => (
+                    {sprintList.map(s => (
                       <div key={s.id} className="p-4 rounded-xl bg-surface-container-high/40 border border-outline-variant/5">
                          <div className="text-[10px] font-black text-secondary uppercase tracking-widest mb-1">{s.name}</div>
                          <div className="text-[9px] text-on-surface-variant font-bold uppercase">{Math.ceil((s.endDate - nowMs()) / 86400000)} Days Remaining</div>
                       </div>
                     ))}
-                    {sprints.length === 0 && (
+                    {sprintList.length === 0 && (
                        <div className="text-[10px] font-bold text-on-surface-variant/20 uppercase tracking-widest py-4 bg-surface-container/10 border border-outline-variant/5 rounded-xl text-center">No Active Sprints</div>
                     )}
                   </div>

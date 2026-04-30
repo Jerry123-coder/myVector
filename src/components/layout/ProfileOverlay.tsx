@@ -48,6 +48,12 @@ export const ProfileOverlay = ({ isOpen, onClose }: ProfileOverlayProps) => {
         {/* Header */}
         <div className="sticky top-0 z-10 p-6 border-b border-outline-variant/10 bg-[#16181b]/80 backdrop-blur-md flex items-center justify-between">
           <div className="flex items-center gap-4">
+            <button 
+              onClick={onClose}
+              className="px-3 py-1.5 rounded-lg border border-outline-variant/30 text-on-surface-variant hover:text-primary hover:border-primary/50 text-[9px] font-black uppercase tracking-widest transition-all md:hidden mr-2"
+            >
+              Back
+            </button>
             <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
               <User className="text-primary" size={24} />
             </div>
@@ -56,12 +62,20 @@ export const ProfileOverlay = ({ isOpen, onClose }: ProfileOverlayProps) => {
               <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">{isAuthenticated ? 'System_Authenticated' : 'Offline_Status'}</p>
             </div>
           </div>
-          <button 
-            onClick={onClose}
-            className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-surface-container-high transition-colors text-on-surface-variant hover:text-primary"
-          >
-            <X size={24} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={onClose}
+              className="hidden md:flex items-center gap-2 px-4 py-2 rounded-xl border border-outline-variant/30 text-on-surface-variant hover:text-primary hover:border-primary/50 text-[10px] font-black uppercase tracking-widest transition-all mr-2"
+            >
+              Back to Dashboard
+            </button>
+            <button 
+              onClick={onClose}
+              className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-surface-container-high transition-colors text-on-surface-variant hover:text-primary"
+            >
+              <X size={24} />
+            </button>
+          </div>
         </div>
 
         {/* Body */}

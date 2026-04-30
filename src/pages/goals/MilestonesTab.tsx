@@ -1,16 +1,11 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Milestone } from '../../lib/db';
+import { getTMinus } from '../../lib/metrics';
 import { nowMs } from '../../lib/time';
 import { CheckCircle2, Plus, Trash2, Flag, AlertTriangle, CalendarDays } from 'lucide-react';
 
-const fmtDate = (ms: number) =>
-  new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-
-const daysLeft = (ms: number, ref: number) => {
-  const d = Math.ceil((ms - ref) / 86400000);
-  return d > 0 ? `${d}d left` : d === 0 ? 'Today' : 'Overdue';
-};
+// Replaced custom daysLeft with unified getTMinus from metrics.ts
 
 export const MilestonesTab = () => {
   const [now] = useState(() => Date.now());
@@ -52,7 +47,7 @@ export const MilestonesTab = () => {
     const sprint    = sprints.find(s => s.id === m.sprintId);
 
     return (
-      <div className={`group flex items-start justify-between p-4 rounded-2xl border-l-4 shadow-sm mb-3 transition-all ${
+      <div className={`group flex items-start justify-between p-4 rounded-sm border-l-4 shadow-sm mb-3 transition-all ${
         m.status === 'done' ? 'border-secondary/40 bg-[#121a14]' : isOverdue || m.status === 'at-risk' ? 'border-error/60 bg-[#1e2024]' : 'border-primary-fixed-dim/40 bg-[#16181b] hover:bg-[#1a1c20]'
       }`}>
         <div className="flex items-start gap-3 flex-1 min-w-0">
@@ -67,8 +62,8 @@ export const MilestonesTab = () => {
               {m.title}
             </div>
             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-              <span className={`font-body text-[9px] font-bold ${isOverdue && m.status !== 'done' ? 'text-error' : m.status === 'done' ? 'text-secondary' : 'text-on-surface-variant'}`}>
-                {m.status === 'done' ? '✓ Done' : `${fmtDate(m.targetDate)} · ${daysLeft(m.targetDate, now)}`}
+              <span className={`font-body text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-sm ${isOverdue && m.status !== 'done' ? 'bg-error text-black' : m.status === 'done' ? 'bg-secondary text-black' : 'bg-surface-container-high text-primary'}`}>
+                {m.status === 'done' ? '✓ DONE' : `${getTMinus(m.targetDate)}`}
               </span>
               {aGoal && <span className="text-[8px] text-primary/60 border border-primary/10 px-1.5 py-0.5">{aGoal.title}</span>}
               {qGoal && <span className="text-[8px] text-primary/40 border border-primary/10 px-1.5 py-0.5">{qGoal.title}</span>}

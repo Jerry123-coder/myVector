@@ -1,4 +1,4 @@
-import { Timer, Rocket, Terminal, Wallet, Users } from 'lucide-react';
+import { Timer, Rocket, Wallet, Users } from 'lucide-react';
 import type { Route } from '../../App';
 
 interface BottomNavBarProps {

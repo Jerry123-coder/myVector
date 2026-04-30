@@ -4,9 +4,10 @@ import { Shield, Mail, Lock, Loader2, ArrowRight, UserPlus, LogIn } from 'lucide
 
 interface AuthViewProps {
   onSuccess?: () => void;
+  onCancel?: () => void;
 }
 
-export const AuthView = ({ onSuccess }: AuthViewProps) => {
+export const AuthView = ({ onSuccess, onCancel }: AuthViewProps) => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -102,17 +103,28 @@ export const AuthView = ({ onSuccess }: AuthViewProps) => {
             </div>
           )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full relative flex items-center justify-center gap-2 py-3 px-6 overflow-hidden transition-all duration-150 rounded-sm"
-            style={{ background: '#00dbe9', color: '#002022' }}
-          >
-            <span className="relative z-10 font-headline font-black text-xs uppercase tracking-widest flex items-center gap-2">
-              {loading ? <Loader2 className="animate-spin" size={16} /> : isLogin ? 'Authenticate' : 'Register'}
-              {!loading && <ArrowRight size={14} />}
-            </span>
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 relative flex items-center justify-center gap-2 py-3 px-6 overflow-hidden transition-all duration-150 rounded-sm"
+              style={{ background: '#00dbe9', color: '#002022' }}
+            >
+              <span className="relative z-10 font-headline font-black text-xs uppercase tracking-widest flex items-center gap-2">
+                {loading ? <Loader2 className="animate-spin" size={16} /> : isLogin ? 'Authenticate' : 'Register'}
+                {!loading && <ArrowRight size={14} />}
+              </span>
+            </button>
+            {onCancel && (
+              <button
+                type="button"
+                onClick={onCancel}
+                className="px-6 py-3 border border-outline-variant/30 text-on-surface-variant font-headline font-bold text-xs uppercase tracking-widest hover:text-primary hover:border-primary/50 transition-all rounded-sm"
+              >
+                Cancel
+              </button>
+            )}
+          </div>
         </form>
 
         <div className="mt-8 pt-6 border-t border-white/5 flex flex-col items-center gap-4">

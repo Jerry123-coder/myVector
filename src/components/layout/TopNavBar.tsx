@@ -11,13 +11,14 @@ interface TopNavBarProps {
   onOpenNotifications: () => void;
 }
 
-export const TopNavBar = ({ 
-  currentRoute, 
-  setRoute, 
-  onOpenAuth, 
-  onOpenProfile, 
-  onOpenNotifications 
+export const TopNavBar = ({
+  currentRoute,
+  setRoute,
+  onOpenAuth,
+  onOpenProfile,
+  onOpenNotifications
 }: TopNavBarProps) => {
+  void setRoute;
   const [time, setTime] = useState(new Date());
   const { isAuthenticated, user } = useAuth();
 
@@ -76,22 +77,21 @@ export const TopNavBar = ({
         {!isAuthenticated ? (
           <button
             onClick={onOpenAuth}
-            className="group relative flex items-center gap-2 px-4 py-1.5 rounded-full overflow-hidden transition-all duration-300 border border-primary/30 hover:border-primary/60 bg-primary/5 active:scale-95"
+            className="group relative flex items-center gap-2 px-5 py-2 rounded-xl overflow-hidden transition-all duration-300 border border-primary/30 hover:border-primary/60 bg-primary/5 active:scale-95"
           >
             <div className="absolute inset-0 bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity" />
             <LogIn size={14} className="text-primary relative z-10" />
             <span className="font-headline font-black text-[10px] uppercase tracking-widest text-primary relative z-10">Access System</span>
-            <div className="absolute -inset-1 bg-primary/20 blur-lg rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
           </button>
         ) : (
           <div className="flex items-center gap-1">
              {/* Profile Trigger */}
              <button
                onClick={onOpenProfile}
-               className="group flex items-center gap-2 p-1.5 pr-3 rounded-full bg-surface-container-high/40 border border-outline-variant/10 hover:border-primary/40 hover:bg-surface-container-high transition-all"
+               className="group flex items-center gap-2 p-1.5 pr-4 rounded-xl bg-surface-container-high/40 border border-outline-variant/10 hover:border-primary/40 hover:bg-surface-container-high transition-all"
                title={`Identity: ${user?.email}`}
              >
-               <div className="w-7 h-7 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center overflow-hidden">
+               <div className="w-7 h-7 rounded-lg bg-primary/20 border border-primary/30 flex items-center justify-center overflow-hidden">
                  {user?.email?.[0].toUpperCase() ?? <User size={14} />}
                </div>
                <ShieldCheck size={12} className="text-secondary animate-pulse" />
@@ -101,10 +101,10 @@ export const TopNavBar = ({
              {/* Notifications Bell */}
              <button
                onClick={onOpenNotifications}
-               className="relative w-9 h-9 flex items-center justify-center rounded-full text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-all group"
+               className="relative w-9 h-9 flex items-center justify-center rounded-xl text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-all group"
              >
                <Bell size={18} className="group-hover:rotate-12 transition-transform" />
-               <span className="absolute top-2 right-2 w-2 h-2 bg-secondary rounded-full shadow-[0_0_8px_#00e475] animate-bounce" />
+               <span className="absolute top-2 right-2 w-2 h-2 bg-secondary rounded-full shadow-[0_0_8px_#00e475]" />
              </button>
           </div>
         )}

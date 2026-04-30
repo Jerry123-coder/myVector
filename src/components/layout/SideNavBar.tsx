@@ -1,4 +1,4 @@
-import { Timer, Zap, BarChart3, Rocket, Terminal, Wallet, Users } from 'lucide-react';
+import { Timer, Zap, BarChart3, Rocket, Wallet, Users } from 'lucide-react';
 import type { Route } from '../../App';
 
 interface SideNavBarProps {

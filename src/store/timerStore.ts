@@ -9,6 +9,7 @@ type TimerState = 'idle' | 'running' | 'paused' | 'ringing' | 'completed';
 interface ActiveTask {
   id?: number;
   label: string;
+  isDaily?: boolean;
 }
 
 interface TimerStore {
@@ -24,13 +25,14 @@ interface TimerStore {
   lastResumeTime: number | null;
   pausedRemainingMs: number | null;
 
-  startTimer: (durationSecs: number) => void;
+  startTimer: (durationSecs: number, type?: 'focus' | 'break') => void;
   pauseTimer: () => void;
   resumeTimer: () => void;
   checkTimerState: () => void;
   endTimer: () => void;
   resetTimer: () => void;
   setActiveTask: (task: ActiveTask) => void;
+  sessionType: 'focus' | 'break';
 }
 
 let alarmInterval: ReturnType<typeof setInterval> | null = null;
@@ -112,8 +114,9 @@ export const useTimerStore = create<TimerStore>()(
       accumulatedMs: 0,
       lastResumeTime: null,
       pausedRemainingMs: null,
+      sessionType: 'focus',
 
-      startTimer: (durationSecs) => {
+      startTimer: (durationSecs, type = 'focus') => {
         const now = Date.now();
         if ('Notification' in window && Notification.permission === 'default') {
           Notification.requestPermission();
@@ -128,6 +131,7 @@ export const useTimerStore = create<TimerStore>()(
           accumulatedMs: 0,
           lastResumeTime: now,
           pausedRemainingMs: null,
+          sessionType: type,
         });
       },
 
@@ -184,10 +188,12 @@ export const useTimerStore = create<TimerStore>()(
 
         // Save session to IndexedDB
         const now = Date.now();
+        const { sessionType } = get();
         const totalFocusMs = accumulatedMs + (state === 'running' && lastResumeTime ? Math.max(0, now - lastResumeTime) : 0);
         const actualSecs = Math.floor(totalFocusMs / 1000);
         
         db.sessions.add({
+          type: sessionType,
           startTime: sessionStartTime ?? now - actualSecs * 1000,
           endTime: now,
           durationSecs: duration,
@@ -198,9 +204,13 @@ export const useTimerStore = create<TimerStore>()(
           updatedAt: now,
         });
 
-        // Mark task as done if linked
-        if (activeTask.id) {
-          db.tasks.update(activeTask.id, { status: 'done', completedAt: now, updatedAt: now });
+        // Mark task as done if linked AND it's a focus session
+        if (activeTask.id && sessionType === 'focus') {
+          if (activeTask.isDaily) {
+            db.dailyTasks.update(activeTask.id, { done: true, updatedAt: now });
+          } else {
+            db.tasks.update(activeTask.id, { status: 'done', completedAt: now, updatedAt: now });
+          }
         }
       },
 

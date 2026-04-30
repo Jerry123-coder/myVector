@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
-import { Lock, Zap, ChevronDown, X, Plus, Edit3, Activity, Timer, Coffee, Play, Square, Pause, SkipForward, ArrowUp, ArrowDown, Settings2, Trash2 } from 'lucide-react';
+import { useEffect, useState, useMemo } from 'react';
+import { Lock, Zap, ChevronDown, X, Plus, Edit3, Activity, Timer, Coffee, Play, Square, Pause, SkipForward, ArrowUp, ArrowDown, Settings2, Trash2, CheckCircle2, Circle } from 'lucide-react';
 import { MetricsView } from './MetricsView';
 import { useTimerStore } from '../store/timerStore';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
+import { useToast } from '../components/ToastContext';
 
 type BlockType = 'focus' | 'break';
 
@@ -83,6 +84,7 @@ export const TimerView = () => {
     startTimer, checkTimerState, resetTimer, endTimer, pauseTimer, resumeTimer,
     activeTask, setActiveTask,
   } = useTimerStore();
+  const { showToast } = useToast();
 
   const [timeLeft, setTimeLeft] = useState(duration);
   
@@ -98,12 +100,31 @@ export const TimerView = () => {
 
   const [lockIn, setLockIn] = useState(false);
   const [newTaskLabel, setNewTaskLabel] = useState('');
-  const [showTaskPicker, setShowTaskPicker] = useState(false);
-
-  const pendingTasks = useLiveQuery(
-    () => db.tasks.where('status').anyOf(['pending','active']).reverse().sortBy('createdAt'),
+  const dailyTasks = useLiveQuery(
+    () => db.dailyTasks.where('date').equals(new Date().toISOString().split('T')[0]).toArray(),
     []
   );
+
+  const mergedTasks = useMemo(() => {
+    const dailyAsTasks = (dailyTasks || []).filter(d => !d.done).map(d => ({
+      id: d.id, // Using dailyTask id for mapping
+      label: d.label,
+      priority: 'HIGH' as const,
+      isDaily: true,
+      taskId: d.taskId
+    }));
+    return dailyAsTasks;
+  }, [dailyTasks]);
+
+  // Sync with Today section: clear active task if it's completed elsewhere
+  useEffect(() => {
+    if (activeTask.id && dailyTasks) {
+      const stillPending = dailyTasks.some(d => d.id === activeTask.id && !d.done);
+      if (!stillPending) {
+        setActiveTask({ label: 'System Recovery' });
+      }
+    }
+  }, [activeTask.id, dailyTasks, setActiveTask]);
 
   useEffect(() => {
     const iv = setInterval(() => {
@@ -149,14 +170,28 @@ export const TimerView = () => {
   const executeStart = (overrideMins?: number) => {
     const m = overrideMins || currentBlock.mins;
     if (state === 'idle' || state === 'completed') {
-      startTimer(m * 60);
+      startTimer(m * 60, currentBlock.type);
       // Auto-label break blocks so it doesn't log standard focus
       if (isBreak) {
         setActiveTask({ label: currentBlock.label });
       } else if (activeTask.label === 'System Recovery' || activeTask.label === 'Short Break') {
-        setActiveTask({ label: 'General Focus' }); // auto restore if finishing a break
+        setActiveTask({ label: 'General Focus' }); 
       }
+      showToast(`${isBreak ? 'Recovery' : 'Focus'} Phase Engaged`, 'success');
     }
+  };
+
+  const completeActiveTask = async () => {
+     if (!activeTask.id) return;
+     const dt = await db.dailyTasks.get(activeTask.id);
+     if (dt) {
+        await db.dailyTasks.update(activeTask.id, { done: true, updatedAt: Date.now() });
+        if (dt.taskId) {
+           await db.tasks.update(dt.taskId, { status: 'done', completedAt: Date.now(), updatedAt: Date.now() });
+        }
+        showToast('Directive Accomplished', 'success');
+        setActiveTask({ label: 'System Recovery' });
+     }
   };
 
   const handleNextBlock = () => {
@@ -213,6 +248,7 @@ export const TimerView = () => {
     setSelectedTemplateId(newTemplate.id);
     setCurrentBlockIndex(0);
     setIsBuildingProtocol(false);
+    showToast('Protocol Matrix Committed', 'success');
   };
 
   const moveUserTemplate = (index: number, direction: 'up' | 'down') => {
@@ -246,7 +282,8 @@ export const TimerView = () => {
   const quickAddTask = async () => {
     const label = newTaskLabel.trim().toUpperCase();
     if (!label) return;
-    const id = await db.tasks.add({ label, status: 'active', priority: 'HIGH', createdAt: Date.now() });
+    const ts = Date.now();
+    const id = await db.tasks.add({ label, status: 'active', priority: 'HIGH', createdAt: ts, updatedAt: ts });
     setActiveTask({ id, label });
     setNewTaskLabel('');
   };
@@ -507,10 +544,16 @@ export const TimerView = () => {
                     <span className="font-headline font-bold text-sm text-primary uppercase tracking-tight truncate w-full">{selectedTemplate.label}</span>
                     <span className="font-headline font-bold text-[9px] text-on-surface-variant/60 uppercase tracking-widest flex items-center gap-2">
                        {selectedTemplate.blocks.length} Phases
-                       <div className="flex gap-0.5">
-                         {selectedTemplate.blocks.map((b,i) => (
-                           <div key={i} className={`w-1 h-1 rounded-full ${b.type === 'break' ? 'bg-secondary' : 'bg-primary'}`} />
-                         ))}
+                       <div className="flex gap-1 items-center">
+                         {selectedTemplate.blocks.map((b,i) => {
+                           const isCurrent = i === currentBlockIndex && (isRunning || isPaused);
+                           const isDone = i < currentBlockIndex;
+                           return (
+                             <div key={i} className={`flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[7px] font-black ${isCurrent ? 'bg-[#ffba38] text-black animate-pulse' : isDone ? 'bg-[#ffba38]/40 text-[#ffba38]' : b.type === 'break' ? 'bg-secondary/20 text-secondary' : 'bg-primary/20 text-primary'}`}>
+                               {b.mins}m
+                             </div>
+                           )
+                         })}
                        </div>
                     </span>
                  </div>
@@ -526,9 +569,13 @@ export const TimerView = () => {
                         <div className={`font-headline font-bold text-xs uppercase tracking-widest mb-1 truncate ${selectedTemplateId === t.id ? 'text-primary' : 'text-on-surface-variant'}`}>{t.label}</div>
                         <div className="text-[9px] font-bold text-on-surface-variant/50 uppercase tracking-widest mb-4 truncate line-clamp-2 white-space-normal h-[24px]">{t.desc}</div>
                         
-                        <div className="flex gap-1 h-1.5 w-full bg-surface-container-highest rounded-full overflow-hidden">
+                        <div className="flex flex-wrap gap-1 mt-auto">
                           {t.blocks.map((b,i) => (
-                            <div key={i} className={`flex-1 ${b.type === 'break' ? 'bg-secondary' : 'bg-primary'}`} style={{ opacity: selectedTemplateId === t.id ? 1 : 0.6 }}/>
+                            <div key={i} 
+                                 className={`px-1 rounded-sm text-[7px] font-black ${b.type === 'break' ? 'bg-secondary/20 text-secondary' : 'bg-primary/20 text-primary'}`}
+                                 style={{ opacity: selectedTemplateId === t.id ? 1 : 0.6 }}>
+                              {b.mins}m
+                            </div>
                           ))}
                         </div>
                       </button>
@@ -563,6 +610,12 @@ export const TimerView = () => {
                         {activeTask.id ? 'Active Focus Target' : 'Current Target (General)'}
                      </span>
                    </div>
+                   {activeTask.id && (
+                     <button onClick={completeActiveTask} className="w-8 h-8 rounded-md border border-secondary/40 bg-secondary/10 flex items-center justify-center shrink-0 hover:bg-secondary/20 transition-colors text-secondary group/btn" title="Complete Target">
+                        <Circle size={14} className="group-hover/btn:hidden" />
+                        <CheckCircle2 size={14} className="hidden group-hover/btn:block" />
+                     </button>
+                   )}
                  </div>
 
                  {/* Integrated Task Backlog View */}
@@ -577,13 +630,16 @@ export const TimerView = () => {
                       <div className="max-h-40 overflow-y-auto no-scrollbar flex flex-col gap-1 -mx-2 px-2">
                           <button onClick={() => setActiveTask({ label:'General Focus' })} 
                                   className={`w-full py-2.5 px-3 text-left rounded-md transition-colors font-bold text-[10px] uppercase tracking-widest ${!activeTask.id && activeTask.label==='General Focus' ? 'bg-primary/10 text-primary' : 'hover:bg-primary/5 text-on-surface-variant'}`}>
-                             General Focus Focus
+                             General Focus
                           </button>
-                          {pendingTasks?.map(t => (
-                            <button key={t.id} onClick={() => setActiveTask({ id: t.id, label: t.label })} 
-                                    className={`w-full py-2.5 px-3 text-left rounded-md transition-colors flex justify-between items-center group ${activeTask.id === t.id ? 'bg-primary/10 text-primary border border-primary/20' : 'hover:bg-primary/5 text-on-surface border border-transparent'}`}>
-                               <span className="font-bold text-[10px] uppercase tracking-widest truncate">{t.label}</span>
-                               <span className="shrink-0 text-[8px] font-bold opacity-40 group-hover:opacity-100">{t.priority}</span>
+                          {mergedTasks.map(t => (
+                            <button key={`${t.isDaily ? 'd' : 's'}-${t.id}`} onClick={() => setActiveTask({ id: t.id, label: t.label, isDaily: t.isDaily })} 
+                                    className={`w-full py-2.5 px-3 text-left rounded-md transition-colors flex justify-between items-center group ${activeTask.label === t.label ? 'bg-primary/10 text-primary border border-primary/20' : 'hover:bg-primary/5 text-on-surface border border-transparent'}`}>
+                               <div className="flex items-center gap-2 overflow-hidden">
+                                  {t.isDaily && <div className="w-1.5 h-1.5 rounded-full bg-secondary shrink-0" />}
+                                  <span className="font-bold text-[10px] uppercase tracking-widest truncate">{t.label}</span>
+                               </div>
+                               <span className="shrink-0 text-[8px] font-bold opacity-40 group-hover:opacity-100">{t.isDaily ? 'TODAY' : t.priority}</span>
                             </button>
                           ))}
                       </div>

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { CheckCircle2, Plus, Trash2, Zap } from 'lucide-react';
+import { CheckCircle2, Plus, Trash2, Zap, ArrowUp, ArrowDown } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Task } from '../../lib/db';
 import { nowMs } from '../../lib/time';
@@ -28,7 +28,7 @@ export const SprintTab = () => {
   const displayed = sprints.find(s => s.id === selectedId) ?? sprints[0];
 
   const sprintTasks = useLiveQuery(
-    () => displayed?.id ? db.tasks.where('sprintId').equals(displayed.id).toArray().then(a => a.sort((x,y) => x.createdAt - y.createdAt)) : Promise.resolve([] as Task[]),
+    () => displayed?.id ? db.tasks.where('sprintId').equals(displayed.id).toArray().then(a => a.sort((x,y) => (x.order ?? x.createdAt) - (y.order ?? y.createdAt))) : Promise.resolve([] as Task[]),
     [displayed?.id]
   ) ?? [];
 
@@ -71,7 +71,7 @@ export const SprintTab = () => {
     await db.tasks.add({
       label: newTaskLabel.trim().toUpperCase(), status: 'pending', priority: newTaskPri,
       sprintId: displayed.id, quarterlyGoalId: displayed.quarterlyGoalId,
-      annualGoalId: qGoal?.annualGoalId, createdAt: nowMs(), updatedAt: Date.now(),
+      annualGoalId: qGoal?.annualGoalId, order: sprintTasks.length, createdAt: nowMs(), updatedAt: Date.now(),
     });
     setNewTaskLabel('');
   };
@@ -81,6 +81,21 @@ export const SprintTab = () => {
     await db.tasks.update(t.id, t.status === 'done'
       ? { status: 'pending', completedAt: undefined, updatedAt: Date.now() }
       : { status: 'done', completedAt: nowMs(), updatedAt: Date.now() });
+  };
+
+  const reorderTask = async (task: Task, direction: 'up' | 'down') => {
+    if (!task.id) return;
+    const currentIndex = sprintTasks.findIndex(t => t.id === task.id);
+    if (direction === 'up' && currentIndex === 0) return;
+    if (direction === 'down' && currentIndex === sprintTasks.length - 1) return;
+
+    const swapIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    const swapTask = sprintTasks[swapIndex];
+
+    await db.transaction('rw', db.tasks, async () => {
+      await db.tasks.update(task.id!, { order: swapIndex, updatedAt: Date.now() });
+      await db.tasks.update(swapTask.id!, { order: currentIndex, updatedAt: Date.now() });
+    });
   };
 
   const deleteTask = async (id?: number) => { if (id) await db.tasks.delete(id); };
@@ -194,17 +209,20 @@ export const SprintTab = () => {
                      <span className="font-headline font-bold text-xs text-on-surface-variant/40 uppercase tracking-widest">No tasks in this sprint</span>
                    </div>
                  )}
-                 {sprintTasks.map(task => (
+                 {sprintTasks.map((task, index) => {
+                   const isNextActive = task.status !== 'done' && sprintTasks.slice(0, index).every(t => t.status === 'done');
+                   return (
                    <div key={task.id} onClick={() => toggleTask(task)}
-                     className={`flex items-center justify-between p-4 group cursor-pointer transition-all ${task.status === 'done' ? 'bg-[#111318]' : 'bg-[#16181b] hover:bg-[#1a1c20]'}`}>
+                     className={`flex items-center justify-between p-4 group cursor-pointer transition-all ${task.status === 'done' ? 'bg-[#111318]' : isNextActive ? 'bg-[#1a1c20] border-l-2 border-primary' : 'bg-[#16181b] hover:bg-[#1a1c20]'}`}>
                      <div className="flex items-center gap-4 flex-1 min-w-0">
-                       <div className={`w-6 h-6 rounded flex-shrink-0 flex items-center justify-center border transition-all ${task.status === 'done' ? 'border-secondary bg-secondary/10' : task.status === 'active' ? 'border-primary' : 'border-outline-variant group-hover:border-primary/50'}`}>
+                       <div className={`w-6 h-6 rounded flex-shrink-0 flex items-center justify-center border transition-all ${task.status === 'done' ? 'border-secondary bg-secondary/10' : isNextActive ? 'border-primary shadow-[0_0_10px_rgba(0,219,233,0.3)]' : 'border-outline-variant group-hover:border-primary/50'}`}>
                          {task.status === 'done'   && <CheckCircle2 size={12} className="text-secondary" />}
-                         {task.status === 'active' && <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />}
+                         {isNextActive && <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />}
                        </div>
                        <div className="min-w-0 flex-1">
-                         <div className={`font-headline font-bold text-sm uppercase tracking-tight truncate ${task.status === 'done' ? 'text-on-surface-variant/40 line-through' : 'text-on-surface'}`}>
+                         <div className={`font-headline font-bold text-sm uppercase tracking-tight truncate flex items-center gap-2 ${task.status === 'done' ? 'text-on-surface-variant/40 line-through' : isNextActive ? 'text-primary' : 'text-on-surface'}`}>
                            {task.label}
+                           {isNextActive && <span className="text-[8px] px-1.5 py-0.5 rounded-sm bg-primary/20 text-primary font-black tracking-widest">NEXT TARGET</span>}
                          </div>
                          {task.status === 'done' && task.completedAt && (
                            <div className="font-body text-[9px] text-secondary uppercase tracking-widest mt-0.5">
@@ -213,7 +231,17 @@ export const SprintTab = () => {
                          )}
                        </div>
                      </div>
-                     <div className="flex items-center gap-3 flex-shrink-0 ml-4">
+                     <div className="flex items-center gap-2 flex-shrink-0 ml-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                       <button onClick={e => { e.stopPropagation(); reorderTask(task, 'up'); }} disabled={index === 0}
+                         className="w-6 h-6 rounded flex items-center justify-center text-outline/50 hover:bg-white/10 hover:text-on-surface disabled:opacity-30">
+                         <ArrowUp size={14} />
+                       </button>
+                       <button onClick={e => { e.stopPropagation(); reorderTask(task, 'down'); }} disabled={index === sprintTasks.length - 1}
+                         className="w-6 h-6 rounded flex items-center justify-center text-outline/50 hover:bg-white/10 hover:text-on-surface disabled:opacity-30">
+                         <ArrowDown size={14} />
+                       </button>
+                     </div>
+                     <div className="flex items-center gap-3 flex-shrink-0 ml-2">
                        <span className={`text-[9px] rounded uppercase tracking-wider font-bold px-2 py-1 border ${PRI[task.priority]}`}>{task.priority}</span>
                        <button onClick={e => { e.stopPropagation(); deleteTask(task.id); }}
                          className="w-8 h-8 rounded-lg flex items-center justify-center text-outline/30 hover:bg-error/10 hover:text-error transition-colors opacity-0 group-hover:opacity-100">
@@ -221,7 +249,7 @@ export const SprintTab = () => {
                        </button>
                      </div>
                    </div>
-                 ))}
+                 )})}
                </div>
             </div>
           </div>

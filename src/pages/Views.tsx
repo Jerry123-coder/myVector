@@ -50,7 +50,7 @@ export const SettingsView = () => {
           <div className="flex items-center gap-4">
             <div className="text-right hidden sm:block">
               <div className="text-[9px] text-on-surface-variant uppercase font-bold tracking-widest">Connected_Operator</div>
-              <div className="text-[11px] font-headline font-bold text-primary truncate max-w-[150px]">{user.email}</div>
+              <div className="text-[11px] font-headline font-bold text-primary truncate max-w-[150px]">{user?.email ?? ''}</div>
             </div>
             <button 
               onClick={() => signOut()}

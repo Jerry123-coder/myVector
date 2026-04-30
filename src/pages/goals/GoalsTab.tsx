@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, type Task } from '../../lib/db';
+import { db, type Task, type AnnualGoal } from '../../lib/db';
 import { nowMs } from '../../lib/time';
-import { Plus, Target, ChevronRight, CheckCircle2, Circle, Clock, Rocket, Trophy, LayoutGrid, Calendar } from 'lucide-react';
+import { Plus, Target, ChevronRight, CheckCircle2, Circle, Clock, Rocket, Trophy, LayoutGrid, Calendar, Pin } from 'lucide-react';
 import { GoalDetailOverlay } from '../../components/layout/GoalDetailOverlay';
 
 const daysLeft = (ms: number | undefined, ref: number) => {
@@ -26,6 +26,7 @@ export const GoalsTab = () => {
 
   // Form State (Simplified)
   const [aTitle, setATitle] = useState('');
+  const [aCategory, setACategory] = useState<AnnualGoal['category']>('CRAFT');
   const [qTitle, setQTitle] = useState('');
   const [qQuarter, setQQuarter] = useState(`Q${Math.ceil((new Date().getMonth() + 1) / 3)} ${new Date().getFullYear()}`);
 
@@ -33,6 +34,7 @@ export const GoalsTab = () => {
     if (!aTitle.trim()) return;
     await db.annualGoals.add({
       title: aTitle.trim().toUpperCase(),
+      category: aCategory,
       year: new Date().getFullYear(),
       status: 'active',
       createdAt: nowMs(),
@@ -73,8 +75,13 @@ export const GoalsTab = () => {
     const dl = daysLeft(g.targetDate, now);
 
     return (
-      <div key={g.id} className={`group relative rounded-[2.5rem] p-8 transition-all duration-300 border ${isDone ? 'bg-secondary/5 border-secondary/20 shadow-[0_0_30px_rgba(0,228,117,0.05)]' : 'bg-[#16181b] border-outline-variant/10 hover:border-primary/30 hover:shadow-2xl hover:-translate-y-1'}`}>
+      <div key={g.id} className={`group relative rounded-sm p-8 transition-all duration-300 border ${g.isPinned ? 'border-tertiary-fixed-dim/40 bg-tertiary-fixed-dim/5 shadow-[0_0_30px_rgba(255,186,56,0.05)]' : isDone ? 'bg-secondary/5 border-secondary/20 shadow-[0_0_30px_rgba(0,228,117,0.05)]' : 'bg-[#16181b] border-outline-variant/10 hover:border-primary/30 hover:shadow-2xl'}`}>
         
+        {g.isPinned && (
+           <div className="absolute top-4 right-4 text-tertiary-fixed-dim">
+              <Pin size={14} fill="currentColor" />
+           </div>
+        )}
         {/* Card Header */}
         <div className="flex justify-between items-start mb-6">
           <div className="flex-1 min-w-0">
@@ -167,9 +174,24 @@ export const GoalsTab = () => {
               onChange={e => setATitle(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && createAnnual()}
               placeholder="Initialize Master Directive..."
-              className="w-full bg-transparent border-none outline-none text-xl font-headline font-black text-primary uppercase placeholder:text-primary/20"
+              className="w-full bg-transparent border-none outline-none text-xl font-headline font-black text-primary uppercase placeholder:text-primary/20 mb-4"
             />
-            <div className="flex gap-2 mt-4">
+            <div className="flex flex-wrap gap-2 mb-6">
+              {(['CRAFT', 'FINANCE', 'HEALTH', 'SOCIAL', 'CHARACTER', 'OTHER'] as const).map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setACategory(cat)}
+                  className={`px-3 py-1.5 rounded-sm border text-[8px] font-black uppercase tracking-widest transition-all ${
+                    aCategory === cat
+                      ? 'bg-primary/20 border-primary text-primary'
+                      : 'bg-surface-container-high border-outline-variant/30 text-on-surface-variant/60 hover:border-primary/20'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
               <button onClick={createAnnual} className="px-6 py-2 bg-primary text-black font-headline font-black text-[10px] uppercase rounded-xl">Create</button>
               <button onClick={() => setCreatingAnnual(false)} className="px-6 py-2 text-on-surface-variant font-headline font-bold text-[10px] uppercase">Cancel</button>
             </div>
