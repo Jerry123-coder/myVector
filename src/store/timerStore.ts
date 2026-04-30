@@ -33,6 +33,8 @@ interface TimerStore {
   resetTimer: () => void;
   setActiveTask: (task: ActiveTask) => void;
   sessionType: 'focus' | 'break';
+  ambientTrackId: string;
+  setAmbientTrack: (id: string) => void;
 }
 
 let alarmInterval: ReturnType<typeof setInterval> | null = null;
@@ -115,6 +117,9 @@ export const useTimerStore = create<TimerStore>()(
       lastResumeTime: null,
       pausedRemainingMs: null,
       sessionType: 'focus',
+      ambientTrackId: 'none',
+
+      setAmbientTrack: (id: string) => set({ ambientTrackId: id }),
 
       startTimer: (durationSecs, type = 'focus') => {
         const now = Date.now();

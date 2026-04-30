@@ -4,6 +4,7 @@ import { SideNavBar } from './components/layout/SideNavBar';
 import { BottomNavBar } from './components/layout/BottomNavBar';
 import { TimerView } from './pages/TimerView';
 import { GoalsView } from './pages/GoalsView';
+import { AnalyticsView } from './pages/AnalyticsView';
 import { DevTools } from './components/DevTools';
 import { useAuth } from './hooks/useAuth';
 import { AuthView } from './pages/AuthView';
@@ -14,7 +15,7 @@ import { NotificationCenter } from './components/layout/NotificationCenter';
 import { DbProvider } from './lib/DbContext';
 import { ToastProvider } from './components/ToastContext';
 
-export type Route = 'timer' | 'goals' | 'wallet' | 'people' | 'settings';
+export type Route = 'timer' | 'goals' | 'analytics' | 'wallet' | 'people' | 'settings';
 
 function App() {
   const [currentRoute, setCurrentRoute] = useState<Route>('timer');
@@ -70,10 +71,11 @@ function App() {
             </div>
           ) : (
             <>
-              {currentRoute === 'timer'  && <TimerView />}
-              {currentRoute === 'goals'  && <GoalsView />}
-              {currentRoute === 'wallet' && <WalletView />}
-              {currentRoute === 'people' && <PeopleView />}
+              {currentRoute === 'timer'     && <TimerView setRoute={setCurrentRoute} />}
+              {currentRoute === 'goals'     && <GoalsView />}
+              {currentRoute === 'analytics' && <AnalyticsView setRoute={setCurrentRoute} />}
+              {currentRoute === 'wallet'    && <WalletView />}
+              {currentRoute === 'people'    && <PeopleView />}
             </>
           )}
         </main>

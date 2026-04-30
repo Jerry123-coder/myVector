@@ -1,6 +1,6 @@
-import { X, CheckCircle2, Clock, Trash2, Plus, Flag, Rocket, Pin } from 'lucide-react';
+import { X, CheckCircle2, Clock, Trash2, Plus, Flag, Rocket, Pin, Swords, Minus } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, type Task, type AnnualGoal, type QuarterlyGoal } from '../../lib/db';
+import { db, type Task, type AnnualGoal, type QuarterlyGoal, type SideQuest } from '../../lib/db';
 import { useState } from 'react';
 import { nowMs } from '../../lib/time';
 
@@ -60,6 +60,21 @@ export const GoalDetailOverlay = ({ goalId, type, onClose }: GoalDetailOverlayPr
     [goalId, type]
   );
 
+  const linkedQuests = useLiveQuery(
+    () => {
+      if (!goalId || !type) return [];
+      return type === 'annual'
+        ? db.sideQuests.where('annualGoalId').equals(goalId).toArray()
+        : db.sideQuests.where('quarterlyGoalId').equals(goalId).toArray();
+    },
+    [goalId, type]
+  );
+
+  const unlinkedQuests = useLiveQuery(
+    () => db.sideQuests.filter(q => !q.annualGoalId && !q.quarterlyGoalId).toArray(),
+    []
+  );
+
   const taskList = tasks ?? [];
   const subGoalList = subGoals ?? [];
   const milestoneList = milestones ?? [];
@@ -113,6 +128,29 @@ export const GoalDetailOverlay = ({ goalId, type, onClose }: GoalDetailOverlayPr
   const updateCategory = async (cat: AnnualGoal['category']) => {
     if (type !== 'annual' || !goalId) return;
     await db.annualGoals.update(goalId, { category: cat, updatedAt: Date.now() });
+  };
+
+  const linkQuest = async (questId: number) => {
+    if (!goalId || !type) return;
+    const update = type === 'annual' ? { annualGoalId: goalId } : { quarterlyGoalId: goalId };
+    await db.sideQuests.update(questId, { ...update, updatedAt: Date.now() });
+  };
+
+  const unlinkQuest = async (questId: number) => {
+    const update = type === 'annual' ? { annualGoalId: undefined } : { quarterlyGoalId: undefined };
+    await db.sideQuests.update(questId, { ...update, updatedAt: Date.now() });
+  };
+
+  const incrementQuest = async (q: SideQuest) => {
+    if (q.currentCount < q.targetCount) {
+      await db.sideQuests.update(q.id!, { currentCount: q.currentCount + 1, updatedAt: Date.now() });
+    }
+  };
+
+  const decrementQuest = async (q: SideQuest) => {
+    if (q.currentCount > 0) {
+      await db.sideQuests.update(q.id!, { currentCount: q.currentCount - 1, updatedAt: Date.now() });
+    }
   };
 
   const progress = taskList.length ? Math.round((taskList.filter(t => t.status === 'done').length / taskList.length) * 100) : 0;
@@ -298,6 +336,53 @@ export const GoalDetailOverlay = ({ goalId, type, onClose }: GoalDetailOverlayPr
                     {sprintList.length === 0 && (
                        <div className="text-[10px] font-bold text-on-surface-variant/20 uppercase tracking-widest py-4 bg-surface-container/10 border border-outline-variant/5 rounded-xl text-center">No Active Sprints</div>
                     )}
+                  </div>
+                </div>
+
+                {/* Side Quests (Habits) */}
+                <div className="pt-6 border-t border-outline-variant/5">
+                  <div className="flex items-center justify-between mb-4">
+                     <div className="text-[9px] font-black text-on-surface-variant/50 uppercase tracking-widest flex items-center gap-2">
+                        <Swords size={12} className="text-primary" /> Integrated Quests
+                     </div>
+                  </div>
+                  <div className="space-y-3">
+                    {(linkedQuests || []).map(q => (
+                       <div key={q.id} className="p-4 rounded-xl bg-primary/5 border border-primary/10 group/q">
+                          <div className="flex justify-between items-start mb-2">
+                             <div className="text-[9px] font-black text-on-surface uppercase tracking-tight">{q.title}</div>
+                             <button onClick={() => unlinkQuest(q.id!)} className="opacity-0 group-hover/q:opacity-100 text-error/40 hover:text-error transition-all">
+                                <Trash2 size={10} />
+                             </button>
+                          </div>
+                          <div className="flex items-center justify-between">
+                             <span className="text-[12px] font-headline font-black text-primary tabular-nums">{q.currentCount} / {q.targetCount}</span>
+                             <div className="flex gap-1">
+                                <button onClick={() => decrementQuest(q)} className="w-6 h-6 rounded-lg bg-black/40 hover:bg-error/20 flex items-center justify-center transition-colors">
+                                   <Minus size={10} />
+                                </button>
+                                <button onClick={() => incrementQuest(q)} className="w-6 h-6 rounded-lg bg-primary/20 text-primary flex items-center justify-center transition-colors">
+                                   <Plus size={10} />
+                                </button>
+                             </div>
+                          </div>
+                       </div>
+                    ))}
+                    
+                    <div className="relative group/add">
+                       <select 
+                          onChange={(e) => {
+                             const id = Number(e.target.value);
+                             if (id) linkQuest(id);
+                          }}
+                          className="w-full appearance-none bg-surface-container/20 border border-dashed border-outline-variant/20 rounded-xl px-4 py-3 text-[9px] font-black uppercase tracking-widest text-on-surface-variant/40 hover:border-primary/40 hover:text-primary transition-all outline-none cursor-pointer"
+                       >
+                          <option value="">+ Link Side Quest</option>
+                          {(unlinkedQuests || []).map(q => (
+                             <option key={q.id} value={q.id}>{q.title}</option>
+                          ))}
+                       </select>
+                    </div>
                   </div>
                 </div>
               </div>

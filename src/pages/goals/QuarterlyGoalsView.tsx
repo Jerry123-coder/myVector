@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useDb } from '../../lib/DbContext';
-import { type QuarterlyGoal } from '../../lib/db';
-import { Plus, Trash2, Activity, Target, Check } from 'lucide-react';
+import { type SideQuest } from '../../lib/db';
+import { Plus, Trash2, Activity, Target, Check, ChevronDown, ChevronUp, ListTodo, Sparkles, Zap, Minus } from 'lucide-react';
 import { useToast } from '../../components/ToastContext';
 import { nowMs } from '../../lib/time';
-
-const PILLARS = ['CRAFT', 'FINANCE', 'HEALTH', 'SOCIAL', 'CHARACTER', 'OTHER'] as const;
+import { StatusRibbon } from '../../components/StatusRibbon';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export const QuarterlyGoalsView = () => {
   const { db, isTestMode } = useDb();
@@ -15,48 +15,44 @@ export const QuarterlyGoalsView = () => {
   const quarterlyGoals = useLiveQuery(() => db.quarterlyGoals.toArray(), [isTestMode]) ?? [];
   const allTasks       = useLiveQuery(() => db.tasks.toArray(), [isTestMode]) ?? [];
   const annualGoals    = useLiveQuery(() => db.annualGoals.toArray(), [isTestMode]) ?? [];
+  const allQuests      = useLiveQuery(() => db.sideQuests.toArray(), [isTestMode]) ?? [];
+  const categories     = useLiveQuery(() => db.categories.toArray(), [isTestMode]) ?? [];
 
-  const [creatingGoal, setCreatingGoal] = useState(false);
-  const [editingGoalId, setEditingGoalId] = useState<number | null>(null);
-  const [goalTitle, setGoalTitle]       = useState('');
-  const [goalIsPinned, setGoalIsPinned] = useState(false);
-  const [goalCategory, setGoalCategory] = useState<QuarterlyGoal['category']>('CRAFT');
-  const [goalAnnualId, setGoalAnnualId] = useState<number | undefined>();
-  const [krInputs, setKrInputs]         = useState<Record<number, string>>({});
+  const [rapidInput, setRapidInput] = useState('');
+  const [expandedGoalId, setExpandedGoalId] = useState<number | null>(null);
+  const [krInputs, setKrInputs] = useState<Record<number, string>>({});
 
-  const saveGoal = async () => {
-    if (!goalTitle.trim()) return;
+  const addRapidFocus = async () => {
+    if (!rapidInput.trim()) return;
     const now = nowMs();
-    if (editingGoalId) {
-      await db.quarterlyGoals.update(editingGoalId, { 
-        title: goalTitle.trim().toUpperCase(), 
-        isPinned: goalIsPinned, 
-        category: goalCategory,
-        annualGoalId: goalAnnualId,
-        updatedAt: Date.now() 
-      });
-      showToast('Objective Updated', 'success');
-    } else {
-      const activeCount = quarterlyGoals.filter(q => q.status === 'active').length;
-      if (activeCount >= 3) {
-        showToast('Max 3 active objectives allowed', 'error');
-        return;
-      }
-      await db.quarterlyGoals.add({
-        title: goalTitle.trim().toUpperCase(), status: 'active', isPinned: goalIsPinned,
-        category: goalCategory, annualGoalId: goalAnnualId,
-        quarter: `Q${Math.floor(new Date().getMonth() / 3) + 1} ${new Date().getFullYear()}`,
-        createdAt: now, updatedAt: now
-      });
-      showToast('Tactical Objective Established', 'success');
-    }
-    setGoalTitle(''); setGoalIsPinned(false); setEditingGoalId(null); setCreatingGoal(false);
+    await db.quarterlyGoals.add({
+      title: rapidInput.trim().toUpperCase(),
+      status: 'active',
+      category: 'CRAFT',
+      quarter: `Q${Math.floor(new Date().getMonth() / 3) + 1} ${new Date().getFullYear()}`,
+      createdAt: now,
+      updatedAt: now
+    });
+    setRapidInput('');
+    showToast('Focus Established', 'success');
   };
 
   const deleteGoal = async (id: number) => {
-    if (confirm("Terminate this objective? Linked sprints will persist.")) {
+    if (confirm("Decommission this objective?")) {
       await db.quarterlyGoals.delete(id);
-      showToast('Objective Terminated', 'info');
+      showToast('Objective Purged', 'info');
+    }
+  };
+
+  const incrementQuest = async (quest: SideQuest) => {
+    if (quest.currentCount < quest.targetCount) {
+      await db.sideQuests.update(quest.id!, { currentCount: quest.currentCount + 1, updatedAt: Date.now() });
+    }
+  };
+
+  const decrementQuest = async (quest: SideQuest) => {
+    if (quest.currentCount > 0) {
+      await db.sideQuests.update(quest.id!, { currentCount: quest.currentCount - 1, updatedAt: Date.now() });
     }
   };
 
@@ -78,137 +74,213 @@ export const QuarterlyGoalsView = () => {
     await db.quarterlyGoals.update(qgId, { keyResults, updatedAt: Date.now() });
   };
 
-  const deleteKr = async (qgId: number, krId: string) => {
-    const qg = await db.quarterlyGoals.get(qgId);
-    if (!qg) return;
-    const keyResults = (qg.keyResults || []).filter(kr => kr.id !== krId);
-    await db.quarterlyGoals.update(qgId, { keyResults, updatedAt: Date.now() });
+  const getPillarTheme = (catId?: string) => {
+    const fallback = { bg: 'bg-primary/10', text: 'text-primary', border: 'border-primary/10', glow: 'rgba(0,219,233,0.3)' };
+    const found = categories.find(c => c.id === catId);
+    if (!found) return fallback;
+    return {
+      bg: found.bg,
+      text: found.color,
+      border: found.border,
+      glow: found.glow
+    };
   };
 
   return (
-    <div className="pb-24 max-w-6xl mx-auto">
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h2 className="font-headline font-black text-2xl text-on-surface uppercase tracking-tight flex items-center gap-2">
-            <Target size={22} className="text-primary" /> Quarterly Objectives
-          </h2>
-          <p className="font-body text-[10px] text-on-surface-variant/50 uppercase tracking-widest mt-0.5">
-            12-Week Execution Directives
-          </p>
+    <div className="pb-24 max-w-7xl mx-auto px-4">
+      <StatusRibbon />
+
+      {/* RAPID INGRESS BAR */}
+      <div className="mb-12 relative group">
+        <div className="absolute inset-0 bg-primary/5 blur-2xl opacity-0 group-focus-within:opacity-100 transition-opacity" />
+        <div className="relative flex items-center bg-[#0f1115]/80 backdrop-blur-xl border border-white/5 p-2 rounded-[18px] shadow-2xl focus-within:border-primary/40 transition-all">
+           <div className="w-12 h-12 flex items-center justify-center text-primary/40 group-focus-within:text-primary transition-colors">
+              <Zap size={20} />
+           </div>
+           <input 
+              value={rapidInput}
+              onChange={e => setRapidInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addRapidFocus()}
+              placeholder="Initialize new 90-day focus area..."
+              className="flex-1 bg-transparent border-none outline-none font-headline font-black text-sm uppercase tracking-widest text-on-surface placeholder:text-on-surface-variant/20 px-2"
+           />
+           <button onClick={addRapidFocus} className="px-6 py-3 bg-primary text-black rounded-[14px] font-headline font-black text-[9px] uppercase tracking-widest hover:brightness-110 active:scale-95 transition-all">
+              Initialize
+           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-10">
+      <div className="flex items-center justify-between mb-8">
+        <h2 className="text-[10px] font-black text-on-surface-variant/40 uppercase tracking-[0.4em] flex items-center gap-3">
+           <Target size={14} className="text-primary" /> Active Directives
+        </h2>
+        <span className="text-[8px] font-black text-on-surface-variant/20 uppercase tracking-widest">{quarterlyGoals.length} Strategic Hubs</span>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {quarterlyGoals.map(qg => {
           const qgTasks = allTasks.filter(t => t.quarterlyGoalId === qg.id);
           const qgDone = qgTasks.filter(t => t.status === 'done').length;
-          const qgPct = qgTasks.length ? Math.round((qgDone / qgTasks.length) * 100) : 0;
-          const isPrimary = qg.isPinned;
+          const qgQuests = allQuests.filter(sq => sq.quarterlyGoalId === qg.id);
+          const theme = getPillarTheme(qg.category);
+          
+          const isExpanded = expandedGoalId === qg.id;
+          const linkedAnnual = annualGoals.find(a => a.id === qg.annualGoalId);
+
+          const taskPct = qgTasks.length ? (qgDone / qgTasks.length) * 100 : 0;
+          const questPct = qgQuests.length ? qgQuests.reduce((acc, q) => acc + (q.currentCount / q.targetCount), 0) / qgQuests.length * 100 : 0;
+          const overallPct = Math.round((taskPct + (qgQuests.length ? questPct : taskPct)) / (qgQuests.length ? 2 : 1));
 
           return (
-            <div key={qg.id} className={`relative bg-[#1a1c22] rounded-2xl p-6 border transition-all duration-300 group ${isPrimary ? 'border-primary/40 shadow-[0_0_30px_rgba(0,219,233,0.05)]' : 'border-white/5 shadow-xl'}`}>
-              <div className="flex justify-between items-start mb-4">
-                  <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded bg-primary/10 text-primary text-[7px] font-black uppercase tracking-widest border border-primary/20">{qg.category ?? 'Life'}</span>
-                      <span className={`font-headline font-black text-[9px] uppercase tracking-[0.2em] ${isPrimary ? 'text-primary' : 'text-on-surface-variant/30'}`}>
-                        {isPrimary ? 'Primary_Objective' : 'Tactical_Target'}
-                      </span>
-                  </div>
-                  <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => { setEditingGoalId(qg.id!); setGoalTitle(qg.title); setGoalIsPinned(!!qg.isPinned); setGoalCategory(qg.category ?? 'CRAFT'); setGoalAnnualId(qg.annualGoalId); setCreatingGoal(true); }} className="p-1.5 rounded-lg hover:bg-white/5 text-on-surface-variant/20 hover:text-primary transition-colors">
-                        <Activity size={12} />
-                      </button>
-                      <button onClick={() => deleteGoal(qg.id!)} className="p-1.5 rounded-lg hover:bg-white/5 text-on-surface-variant/20 hover:text-error transition-colors">
-                        <Trash2 size={12} />
-                      </button>
-                  </div>
-              </div>
-              <h3 className={`font-headline font-black text-lg uppercase tracking-tight leading-tight mb-4 ${isPrimary ? 'text-on-surface' : 'text-on-surface-variant/80'}`}>
-                {qg.title}
-              </h3>
-              <div className="flex items-end justify-between mb-2">
-                  <span className="font-headline font-black text-[10px] text-on-surface-variant/40 uppercase tracking-widest">{qgTasks.length} Directive_Nodes</span>
-                  <span className={`font-headline font-black text-lg tabular-nums ${isPrimary ? 'text-primary' : 'text-secondary'}`}>{qgPct}%</span>
-              </div>
-              <div className="h-1.5 w-full bg-black/40 rounded-full overflow-hidden border border-white/5 mb-4">
-                  <div className={`h-full transition-all duration-1000 ${isPrimary ? 'bg-primary shadow-[0_0_10px_rgba(0,219,233,0.2)]' : 'bg-secondary/60'}`} style={{ width: `${qgPct}%` }} />
-              </div>
+            <motion.div 
+              key={qg.id} 
+              layout
+              className={`bg-[#0f1115]/40 backdrop-blur-md rounded-[14px] border transition-all duration-500 overflow-hidden relative group/card ${isExpanded ? 'border-primary/40 col-span-full shadow-2xl' : 'border-white/5 hover:border-white/10'}`}
+            >
+               {/* Holo Accent */}
+               <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-[40px] opacity-[0.03] group-hover/card:opacity-[0.08] transition-opacity pointer-events-none" 
+                    style={{ backgroundColor: theme.glow }} />
+               
+               <div className="p-8">
+                  <div className="flex flex-col lg:flex-row justify-between gap-8">
+                     <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-3 mb-4">
+                           <span className={`px-2 py-0.5 rounded text-[7px] font-black uppercase tracking-widest ${theme.bg} ${theme.text} border ${theme.border}`}>
+                              {categories.find(c => c.id === qg.category)?.label ?? qg.category ?? 'Life'}
+                           </span>
+                           <span className="text-[7px] font-black uppercase tracking-widest text-on-surface-variant/20">{qg.quarter}</span>
+                        </div>
 
-              {/* Key Results Section */}
-              <div className="border-t border-white/5 pt-4">
-                  <div className="font-headline font-black text-[9px] text-on-surface-variant/40 uppercase tracking-widest mb-3">Key Results / Action Steps</div>
-                  <div className="space-y-2 mb-3">
-                    {(qg.keyResults || []).map(kr => (
-                      <div key={kr.id} className="flex items-start gap-2 group/kr">
-                        <button onClick={() => toggleKr(qg.id!, kr.id)} className={`mt-0.5 w-3 h-3 rounded-sm flex items-center justify-center shrink-0 border transition-all ${kr.done ? 'bg-primary/20 border-primary text-primary' : 'border-on-surface-variant/30 text-transparent hover:border-primary/50'}`}>
-                            <Check size={8} />
-                        </button>
-                        <span className={`font-body text-xs ${kr.done ? 'text-on-surface-variant/30 line-through' : 'text-on-surface-variant/80'} flex-1 leading-tight`}>{kr.title}</span>
-                        <button onClick={() => deleteKr(qg.id!, kr.id)} className="opacity-0 group-hover/kr:opacity-100 transition-opacity text-on-surface-variant/30 hover:text-error shrink-0">
-                            <Trash2 size={10} />
-                        </button>
-                      </div>
-                    ))}
+                        <h3 className={`font-headline font-black text-2xl uppercase tracking-tight leading-tight mb-4 transition-colors ${isExpanded ? 'text-primary' : 'text-on-surface'}`}>
+                           {qg.title}
+                        </h3>
+
+                        <div className="flex items-center gap-2 text-[8px] font-black uppercase tracking-widest text-on-surface-variant/20 mb-6">
+                           <Activity size={10} className="text-secondary/40" />
+                           <span>Last update: {new Date(qg.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+
+                        {/* Integrated Quests Strip */}
+                        {qgQuests.length > 0 && (
+                           <div className="flex flex-wrap gap-3 mb-6">
+                              {qgQuests.map(sq => (
+                                 <div key={sq.id} className="flex items-center gap-3 bg-black/40 border border-white/5 rounded-xl px-4 py-2 group/quest">
+                                    <div className="flex flex-col">
+                                       <span className="text-[7px] font-black text-on-surface-variant/40 uppercase tracking-widest">{sq.title}</span>
+                                       <span className="text-[10px] font-headline font-black text-primary tabular-nums">{sq.currentCount} / {sq.targetCount}</span>
+                                    </div>
+                                    <div className="flex gap-1 ml-2">
+                                       <button onClick={() => decrementQuest(sq)} className="w-6 h-6 rounded-lg bg-white/5 hover:bg-error/20 hover:text-error flex items-center justify-center transition-colors">
+                                          <Minus size={10} />
+                                       </button>
+                                       <button onClick={() => incrementQuest(sq)} className="w-6 h-6 rounded-lg bg-primary/10 text-primary hover:bg-primary hover:text-black flex items-center justify-center transition-colors">
+                                          <Plus size={10} />
+                                       </button>
+                                    </div>
+                                 </div>
+                              ))}
+                           </div>
+                        )}
+                     </div>
+
+                     <div className="flex flex-col items-end gap-6">
+                        <div className="flex gap-2">
+                           <button onClick={() => setExpandedGoalId(isExpanded ? null : qg.id!)}
+                                   className={`w-10 h-10 flex items-center justify-center rounded-[14px] border transition-all ${isExpanded ? 'bg-primary text-black border-primary' : 'bg-white/5 border-white/5 text-on-surface-variant/40 hover:text-primary'}`}>
+                              {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                           </button>
+                           <button onClick={() => deleteGoal(qg.id!)} className="w-10 h-10 flex items-center justify-center rounded-[14px] bg-white/5 border border-white/5 text-on-surface-variant/20 hover:text-error transition-all">
+                              <Trash2 size={16} />
+                           </button>
+                        </div>
+                        
+                        <div className="text-right">
+                           <div className="text-4xl font-headline font-black text-primary tabular-nums tracking-tighter leading-none">{overallPct}%</div>
+                           <div className="text-[8px] font-black uppercase tracking-widest text-primary/40 mt-1">Operational Sync</div>
+                        </div>
+                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Plus size={10} className="text-on-surface-variant/30 shrink-0" />
-                    <input 
-                        value={krInputs[qg.id!] || ''} 
-                        onChange={e => setKrInputs({...krInputs, [qg.id!]: e.target.value})}
-                        onKeyDown={e => e.key === 'Enter' && addKr(qg.id!)}
-                        placeholder="Add action step..."
-                        className="bg-transparent text-xs font-body text-on-surface outline-none placeholder:text-on-surface-variant/30 flex-1"
-                    />
-                  </div>
-              </div>
-            </div>
+
+                  <AnimatePresence>
+                    {isExpanded && (
+                      <motion.div 
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="mt-8 pt-8 border-t border-white/5 overflow-hidden"
+                      >
+                         <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
+                            {/* Key Results */}
+                            <div className="space-y-4">
+                               <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-primary/60 flex items-center gap-2">
+                                  <Sparkles size={12} /> Key Results
+                               </h4>
+                               <div className="space-y-2">
+                                  {(qg.keyResults || []).map(kr => (
+                                     <div key={kr.id} className="flex items-center gap-3 p-3 rounded-[14px] bg-black/40 border border-white/5 group/kr">
+                                        <button onClick={() => toggleKr(qg.id!, kr.id)} 
+                                                className={`w-4 h-4 rounded border transition-all flex items-center justify-center ${kr.done ? 'bg-primary border-primary text-black' : 'border-white/10 text-transparent hover:border-primary/40'}`}>
+                                           <Check size={10} strokeWidth={3} />
+                                        </button>
+                                        <span className={`text-[10px] font-headline font-bold uppercase tracking-widest flex-1 truncate ${kr.done ? 'text-on-surface-variant/20 line-through' : 'text-on-surface/80'}`}>{kr.title}</span>
+                                     </div>
+                                  ))}
+                                  <div className="flex items-center gap-3 p-3 rounded-[14px] border border-dashed border-white/10 focus-within:border-primary/30 transition-colors">
+                                     <input value={krInputs[qg.id!] || ''} 
+                                            onChange={e => setKrInputs({...krInputs, [qg.id!]: e.target.value})}
+                                            onKeyDown={e => e.key === 'Enter' && addKr(qg.id!)}
+                                            placeholder="Add marker..."
+                                            className="bg-transparent text-[9px] font-headline font-bold uppercase tracking-widest text-on-surface outline-none placeholder:text-on-surface-variant/10 flex-1" />
+                                  </div>
+                               </div>
+                            </div>
+
+                            {/* Linked Annual Anchor */}
+                            <div className="space-y-4">
+                               <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-secondary/60 flex items-center gap-2">
+                                  <Target size={12} /> Strategic Anchor
+                               </h4>
+                               {linkedAnnual ? (
+                                  <div className="p-6 bg-black/40 rounded-[14px] border border-white/5">
+                                     <span className="text-[7px] font-black uppercase tracking-widest text-secondary/40 mb-2 block">Yearly Horizon</span>
+                                     <h5 className="font-headline font-black text-sm text-on-surface uppercase tracking-tight">{linkedAnnual.title}</h5>
+                                  </div>
+                               ) : (
+                                  <div className="py-12 text-center border border-dashed border-white/5 rounded-[14px] bg-black/20">
+                                     <p className="text-[8px] font-black text-on-surface-variant/10 uppercase tracking-widest">No Yearly Linkage</p>
+                                  </div>
+                               )}
+                            </div>
+
+                            {/* Operational Tasks */}
+                            <div className="space-y-4">
+                               <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-[#ffba38]/60 flex items-center gap-2">
+                                  <ListTodo size={12} /> Task Pipeline
+                               </h4>
+                               <div className="space-y-2 max-h-[200px] overflow-y-auto no-scrollbar pr-1">
+                                  {qgTasks.map(t => (
+                                     <div key={t.id} className="flex items-center justify-between p-3 rounded-[14px] bg-black/40 border border-white/5">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                           <div className={`w-1 h-1 rounded-full ${t.status === 'done' ? 'bg-[#ffba38]' : 'bg-white/10'}`} />
+                                           <span className={`text-[9px] font-headline font-bold uppercase tracking-widest truncate ${t.status === 'done' ? 'text-on-surface-variant/20' : 'text-on-surface/60'}`}>{t.label}</span>
+                                        </div>
+                                     </div>
+                                  ))}
+                                  {qgTasks.length === 0 && (
+                                     <div className="py-12 text-center border border-dashed border-white/5 rounded-[14px] bg-black/20">
+                                        <p className="text-[8px] font-black text-on-surface-variant/10 uppercase tracking-widest">No Direct Tasks</p>
+                                     </div>
+                                  )}
+                               </div>
+                            </div>
+                         </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+               </div>
+            </motion.div>
           );
         })}
-
-        {quarterlyGoals.length < 3 && !creatingGoal && (
-            <button onClick={() => setCreatingGoal(true)} className="h-full min-h-[140px] rounded-2xl border-2 border-dashed border-white/5 flex flex-col items-center justify-center gap-3 text-on-surface-variant/20 hover:text-primary hover:border-primary/20 hover:bg-primary/[0.02] transition-all group">
-              <Plus size={20} className="group-hover:scale-110 transition-transform" />
-              <span className="font-headline font-black text-[9px] uppercase tracking-[0.3em]">Establish_Directives</span>
-            </button>
-        )}
-
-        {creatingGoal && (
-            <div className="lg:col-span-3 bg-[#1a1c22] rounded-2xl p-8 border border-primary/30 shadow-2xl animate-in fade-in slide-in-from-top-4 duration-500">
-              <div className="flex items-center gap-3 mb-6">
-                  <Target size={20} className="text-primary" />
-                  <h3 className="font-headline font-black text-lg text-on-surface uppercase tracking-tight">{editingGoalId ? 'Modify_Directive' : 'Establish_Tactical_Directive'}</h3>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                  <div className="md:col-span-2">
-                    <span className="font-headline font-black text-[9px] uppercase tracking-widest text-on-surface-variant/40 ml-1">Directive_Identifier</span>
-                    <input autoFocus value={goalTitle} onChange={e => setGoalTitle(e.target.value)} placeholder="MISSION_TITLE..." className="w-full mt-1 bg-black/20 rounded-xl px-6 py-4 font-headline font-black text-xl text-primary uppercase border border-white/5 outline-none focus:border-primary/40" />
-                  </div>
-                  <div>
-                    <span className="font-headline font-black text-[9px] uppercase tracking-widest text-on-surface-variant/40 ml-1">Sector_Pillar</span>
-                    <select value={goalCategory} onChange={e => setGoalCategory(e.target.value as any)} className="w-full mt-1 bg-black/20 rounded-xl px-6 py-4 font-headline font-black text-sm text-primary uppercase border border-white/5 outline-none">
-                        {PILLARS.map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <span className="font-headline font-black text-[9px] uppercase tracking-widest text-on-surface-variant/40 ml-1">Macro_Goal_Sync (Annual)</span>
-                    <select value={goalAnnualId ?? ''} onChange={e => setGoalAnnualId(Number(e.target.value) || undefined)} className="w-full mt-1 bg-black/20 rounded-xl px-6 py-4 font-headline font-black text-sm text-primary uppercase border border-white/5 outline-none">
-                        <option value="">Standalone</option>
-                        {annualGoals.map(ag => <option key={ag.id} value={ag.id}>{ag.title}</option>)}
-                    </select>
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="flex items-center gap-4 px-6 py-4 bg-black/20 rounded-xl border border-white/5 cursor-pointer hover:bg-white/5 transition-colors">
-                      <input type="checkbox" checked={goalIsPinned} onChange={e => setGoalIsPinned(e.target.checked)} className="w-5 h-5 accent-primary" />
-                      <span className="font-headline font-black text-[10px] uppercase tracking-widest text-on-surface-variant/60">Primary_Quarterly_Mission</span>
-                    </label>
-                  </div>
-              </div>
-              <div className="flex gap-4">
-                  <button onClick={saveGoal} className="px-10 py-4 rounded-xl font-headline font-black text-xs uppercase tracking-widest text-black shadow-xl" style={{ background: '#00dbe9' }}>Confirm_Protocol</button>
-                  <button onClick={() => { setCreatingGoal(false); setEditingGoalId(null); setGoalTitle(''); }} className="px-10 py-4 rounded-xl glass font-headline font-black text-xs uppercase tracking-widest text-on-surface-variant/40">Abort</button>
-              </div>
-            </div>
-        )}
       </div>
     </div>
   );

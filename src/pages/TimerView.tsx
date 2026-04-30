@@ -1,10 +1,10 @@
-import { useEffect, useState, useMemo } from 'react';
-import { Lock, Zap, ChevronDown, X, Plus, Edit3, Activity, Timer, Coffee, Play, Square, Pause, SkipForward, ArrowUp, ArrowDown, Settings2, Trash2, CheckCircle2, Circle } from 'lucide-react';
-import { MetricsView } from './MetricsView';
+import { useEffect, useState, useMemo, useRef } from 'react';
+import { Lock, Zap, ChevronDown, X, Plus, Edit3, Coffee, Play, Square, Pause, SkipForward, ArrowUp, ArrowDown, Settings2, Trash2, CheckCircle2, Circle, Music, Activity } from 'lucide-react';
 import { useTimerStore } from '../store/timerStore';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
 import { useToast } from '../components/ToastContext';
+import type { Route } from '../App';
 
 type BlockType = 'focus' | 'break';
 
@@ -55,9 +55,18 @@ const TEMPLATES: FlowTemplate[] = [
   }
 ];
 
-export const TimerView = () => {
-  const [activeTab, setActiveTab] = useState<'engine' | 'velocity'>('engine');
-  
+const AMBIENT_TRACKS = [
+  { id: 'none', label: 'Silence', url: '' },
+  { id: 'deep-space', label: 'Deep Space', url: 'https://actions.google.com/sounds/v1/science_fiction/deep_space.ogg' },
+  { id: 'cafe', label: 'Lofi Cafe', url: 'https://actions.google.com/sounds/v1/ambiences/coffee_shop.ogg' },
+  { id: 'white-noise', label: 'White Noise', url: 'https://actions.google.com/sounds/v1/weather/wind.ogg' },
+];
+
+interface TimerViewProps {
+  setRoute: (r: Route) => void;
+}
+
+export const TimerView = ({ setRoute }: TimerViewProps) => {
   // Persisted Custom Templates
   const [userTemplates, setUserTemplates] = useState<FlowTemplate[]>(() => {
     const saved = localStorage.getItem('vector-user-templates');
@@ -100,13 +109,24 @@ export const TimerView = () => {
 
   const [lockIn, setLockIn] = useState(false);
   const [newTaskLabel, setNewTaskLabel] = useState('');
+  
+  const { ambientTrackId, setAmbientTrack } = useTimerStore();
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const dailyTasks = useLiveQuery(
     () => db.dailyTasks.where('date').equals(new Date().toISOString().split('T')[0]).toArray(),
     []
   );
 
+  const isRunning   = state === 'running';
+  const isPaused    = state === 'paused';
+  const isRinging   = state === 'ringing';
+  const isCompleted = state === 'completed';
+  const isBreak = currentBlock.type === 'break';
+  const themeColor = isBreak ? '#00e475' : '#00dbe9';
+  const themeColorRgb = isBreak ? '0,228,117' : '0,219,233';
+
   const mergedTasks = useMemo(() => {
-    const dailyAsTasks = (dailyTasks || []).filter(d => !d.done).map(d => ({
+    const dailyAsTasks = (dailyTasks || []).filter((d: any) => !d.done).map((d: any) => ({
       id: d.id, // Using dailyTask id for mapping
       label: d.label,
       priority: 'HIGH' as const,
@@ -140,6 +160,21 @@ export const TimerView = () => {
     return () => clearInterval(iv);
   }, [state, sessionEndTime, currentBlock.mins, checkTimerState]);
 
+  // Ambient Audio Management
+  useEffect(() => {
+    if (!audioRef.current) return;
+    const track = AMBIENT_TRACKS.find(t => t.id === ambientTrackId);
+    
+    if (isRunning && !isBreak && track && track.id !== 'none') {
+      if (audioRef.current.src !== track.url) {
+        audioRef.current.src = track.url;
+      }
+      audioRef.current.play().catch((e: any) => console.log('Audio playback blocked:', e));
+    } else {
+      audioRef.current.pause();
+    }
+  }, [isRunning, isBreak, ambientTrackId]);
+
   const absTime = Math.max(0, Math.abs(timeLeft));
   const m = Math.floor(absTime / 60).toString().padStart(2,'0');
   const s = (absTime % 60).toString().padStart(2,'0');
@@ -153,24 +188,15 @@ export const TimerView = () => {
   const circ = 2 * Math.PI * R;
   const dashOffset = circ * (1 - progress);
 
-  const isRunning   = state === 'running';
-  const isPaused    = state === 'paused';
-  const isRinging   = state === 'ringing';
-  const isCompleted = state === 'completed';
-
-  const isBreak = currentBlock.type === 'break';
-  const themeColor = isBreak ? '#00e475' : '#00dbe9';
-  const themeColorRgb = isBreak ? '0,228,117' : '0,219,233';
-
   const executeEnd = () => {
     endTimer();
     setTimeLeft(0);
   };
 
   const executeStart = (overrideMins?: number) => {
-    const m = overrideMins || currentBlock.mins;
+    const mins = overrideMins || currentBlock.mins;
     if (state === 'idle' || state === 'completed') {
-      startTimer(m * 60, currentBlock.type);
+      startTimer(mins * 60, currentBlock.type);
       // Auto-label break blocks so it doesn't log standard focus
       if (isBreak) {
         setActiveTask({ label: currentBlock.label });
@@ -215,7 +241,7 @@ export const TimerView = () => {
   const applyCustom = () => {
     const v = parseInt(customMins);
     if (v > 0 && v <= 480) {
-      const newMins = [v, ...recentMins.filter(m => m !== v)].slice(0, 4);
+      const newMins = [v, ...recentMins.filter((m: number) => m !== v)].slice(0, 4);
       setRecentMins(newMins);
       localStorage.setItem('vector-recent-mins', JSON.stringify(newMins));
       
@@ -230,7 +256,7 @@ export const TimerView = () => {
   // Protocols Management Functions
   const saveProtocol = () => {
     if (builderBlocks.length === 0) return;
-    const finalBlocks: FlowBlock[] = builderBlocks.map(b => ({
+    const finalBlocks: FlowBlock[] = builderBlocks.map((b: FlowBlockBuilder) => ({
        type: b.type,
        label: b.label,
        mins: typeof b.mins === 'number' ? b.mins : (parseInt(b.mins) || 1)
@@ -263,7 +289,7 @@ export const TimerView = () => {
   };
 
   const deleteUserTemplate = (id: string) => {
-    const updated = userTemplates.filter(t => t.id !== id);
+    const updated = userTemplates.filter((t: FlowTemplate) => t.id !== id);
     setUserTemplates(updated);
     localStorage.setItem('vector-user-templates', JSON.stringify(updated));
     if (selectedTemplateId === id) {
@@ -280,11 +306,11 @@ export const TimerView = () => {
   };
 
   const quickAddTask = async () => {
-    const label = newTaskLabel.trim().toUpperCase();
-    if (!label) return;
+    const labelText = newTaskLabel.trim().toUpperCase();
+    if (!labelText) return;
     const ts = Date.now();
-    const id = await db.tasks.add({ label, status: 'active', priority: 'HIGH', createdAt: ts, updatedAt: ts });
-    setActiveTask({ id, label });
+    const id = await db.tasks.add({ label: labelText, status: 'active', priority: 'HIGH', createdAt: ts, updatedAt: ts });
+    setActiveTask({ id, label: labelText });
     setNewTaskLabel('');
   };
 
@@ -301,11 +327,11 @@ export const TimerView = () => {
                 {isRunning ? (isBreak ? 'System Recovery' : 'Session Active') : isCompleted ? 'Session Complete' : 'Standby'}
               </span>
            </div>
-           
-           <button onClick={() => setActiveTab(activeTab === 'velocity' ? 'engine' : 'velocity')} 
+
+           <button onClick={() => setRoute('analytics')} 
                    className="flex items-center gap-2 px-4 py-2 rounded-full border border-primary/30 text-primary hover:bg-primary/10 transition-colors bg-primary/5 shadow-[0_0_15px_rgba(0,219,233,0.1)]">
-              {activeTab === 'velocity' ? <Timer size={14}/> : <Activity size={14}/>}
-              <span className="text-[10px] uppercase font-bold tracking-widest">{activeTab === 'velocity' ? 'Return to Engine' : 'Velocity Metrics'}</span>
+              <Activity size={14}/>
+              <span className="text-[10px] uppercase font-bold tracking-widest">Analytics Dashboard</span>
            </button>
         </div>
       )}
@@ -325,7 +351,7 @@ export const TimerView = () => {
            
            <div className="space-y-3">
              {userTemplates.length === 0 && <div className="text-[10px] uppercase tracking-widest text-on-surface-variant/50 p-6 border border-outline-variant/10 rounded-xl bg-[#111318] text-center">No custom protocols saved.</div>}
-             {userTemplates.map((t, idx) => (
+             {userTemplates.map((t: FlowTemplate, idx: number) => (
                 <div key={t.id} className="flex items-center justify-between bg-[#111318] p-4 rounded-xl border border-outline-variant/20 shadow-lg">
                    <div>
                       <div className="font-headline font-bold text-sm text-primary uppercase tracking-tight mb-0.5">{t.label}</div>
@@ -388,7 +414,7 @@ export const TimerView = () => {
              </div>
 
              <div className="space-y-3">
-               {builderBlocks.map((b, i) => (
+               {builderBlocks.map((b: FlowBlockBuilder, i: number) => (
                  <div key={i} className={`flex items-center gap-3 p-4 rounded-xl border shadow-lg ${b.type==='break' ? 'border-secondary/20 bg-secondary/5' : 'border-primary/20 bg-primary/5'}`}>
                    <div className="flex flex-col flex-1 gap-1">
                       <div className="flex items-center gap-2">
@@ -406,7 +432,7 @@ export const TimerView = () => {
                             placeholder="Mins"
                             className="bg-transparent font-headline font-black text-xl text-on-surface tabular-nums outline-none w-14 text-right placeholder:text-on-surface-variant/20" />
                      <span className="text-[10px] uppercase font-bold text-on-surface-variant/50 mr-2">min</span>
-                     <button onClick={() => setBuilderBlocks(builderBlocks.filter((_,idx)=>idx!==i))} className="w-8 h-8 flex items-center justify-center rounded-full text-error/60 hover:bg-error/10 hover:text-error transition-colors">
+                     <button onClick={() => setBuilderBlocks(builderBlocks.filter((_: any, idx: number) => idx !== i))} className="w-8 h-8 flex items-center justify-center rounded-full text-error/60 hover:bg-error/10 hover:text-error transition-colors">
                         <Trash2 size={14} />
                      </button>
                    </div>
@@ -420,10 +446,6 @@ export const TimerView = () => {
              className="w-full py-5 font-headline font-black text-sm uppercase tracking-[0.2em] transition-all bg-primary text-black rounded-xl hover:bg-primary-fixed-dim disabled:opacity-30 shadow-[0_4px_20px_rgba(0,219,233,0.3)]">
              Commit Protocol to Database
            </button>
-        </div>
-      ) : activeTab === 'velocity' ? (
-        <div className="w-full animate-in fade-in slide-in-from-bottom-2 duration-300">
-          <MetricsView isEmbedded />
         </div>
       ) : (
         <div className="flex flex-col lg:flex-row items-center lg:items-center justify-center w-full gap-12 lg:gap-24 relative">
@@ -545,7 +567,7 @@ export const TimerView = () => {
                     <span className="font-headline font-bold text-[9px] text-on-surface-variant/60 uppercase tracking-widest flex items-center gap-2">
                        {selectedTemplate.blocks.length} Phases
                        <div className="flex gap-1 items-center">
-                         {selectedTemplate.blocks.map((b,i) => {
+                         {selectedTemplate.blocks.map((b: FlowBlock, i: number) => {
                            const isCurrent = i === currentBlockIndex && (isRunning || isPaused);
                            const isDone = i < currentBlockIndex;
                            return (
@@ -563,14 +585,14 @@ export const TimerView = () => {
               {/* Expandable Tile List */}
               <div className={`transition-all duration-300 ease-in-out relative z-10 ${showFlows ? 'opacity-100 translate-y-0 mt-4 pointer-events-auto' : 'opacity-0 -translate-y-4 max-h-0 pointer-events-none'}`}>
                  <div className="flex flex-wrap gap-3 pb-4 pt-1">
-                    {ALL_TEMPLATES.map(t => (
+                    {ALL_TEMPLATES.map((t: FlowTemplate) => (
                       <button key={t.id} onClick={() => { setSelectedTemplateId(t.id); setCurrentBlockIndex(0); setShowFlows(false); }}
                               className={`flex-shrink-0 w-full md:w-[calc(50%-6px)] p-4 rounded-xl border text-left transition-all duration-200 shadow-lg ${selectedTemplateId === t.id ? 'border-primary bg-surface-container-highest' : 'border-outline-variant/10 bg-[#16181b] hover:border-primary/30'} ${t.id === 'single' ? 'bg-[#111318]' : ''}`}>
                         <div className={`font-headline font-bold text-xs uppercase tracking-widest mb-1 truncate ${selectedTemplateId === t.id ? 'text-primary' : 'text-on-surface-variant'}`}>{t.label}</div>
                         <div className="text-[9px] font-bold text-on-surface-variant/50 uppercase tracking-widest mb-4 truncate line-clamp-2 white-space-normal h-[24px]">{t.desc}</div>
                         
                         <div className="flex flex-wrap gap-1 mt-auto">
-                          {t.blocks.map((b,i) => (
+                          {t.blocks.map((b: FlowBlock, i: number) => (
                             <div key={i} 
                                  className={`px-1 rounded-sm text-[7px] font-black ${b.type === 'break' ? 'bg-secondary/20 text-secondary' : 'bg-primary/20 text-primary'}`}
                                  style={{ opacity: selectedTemplateId === t.id ? 1 : 0.6 }}>
@@ -632,7 +654,7 @@ export const TimerView = () => {
                                   className={`w-full py-2.5 px-3 text-left rounded-md transition-colors font-bold text-[10px] uppercase tracking-widest ${!activeTask.id && activeTask.label==='General Focus' ? 'bg-primary/10 text-primary' : 'hover:bg-primary/5 text-on-surface-variant'}`}>
                              General Focus
                           </button>
-                          {mergedTasks.map(t => (
+                          {mergedTasks.map((t: any) => (
                             <button key={`${t.isDaily ? 'd' : 's'}-${t.id}`} onClick={() => setActiveTask({ id: t.id, label: t.label, isDaily: t.isDaily })} 
                                     className={`w-full py-2.5 px-3 text-left rounded-md transition-colors flex justify-between items-center group ${activeTask.label === t.label ? 'bg-primary/10 text-primary border border-primary/20' : 'hover:bg-primary/5 text-on-surface border border-transparent'}`}>
                                <div className="flex items-center gap-2 overflow-hidden">
@@ -648,12 +670,31 @@ export const TimerView = () => {
                </div>
             </div>
 
+            {/* Ambient Audio Selector */}
+            <div className="w-full mb-8">
+               <div className="flex justify-between items-center mb-2 pl-1">
+                  <span className="font-headline font-bold text-[9px] uppercase tracking-widest text-on-surface-variant/50 flex items-center gap-2">
+                    <Music size={10} /> Focus Ambience
+                  </span>
+               </div>
+               <div className="grid grid-cols-2 gap-2">
+                  {AMBIENT_TRACKS.map((track: any) => (
+                    <button key={track.id} onClick={() => setAmbientTrack(track.id)}
+                            className={`py-2.5 px-4 rounded-xl border flex items-center gap-2 transition-all ${ambientTrackId === track.id ? 'border-primary bg-primary/10 text-primary shadow-[0_0_15px_rgba(0,219,233,0.1)]' : 'border-outline-variant/10 bg-[#111318] text-on-surface-variant hover:border-outline-variant/40'}`}>
+                       <div className={`w-1.5 h-1.5 rounded-full ${ambientTrackId === track.id ? 'bg-primary shadow-[0_0_5px_#00dbe9]' : 'bg-on-surface-variant/20'}`} />
+                       <span className="font-headline font-bold text-[10px] uppercase tracking-widest">{track.label}</span>
+                    </button>
+                  ))}
+               </div>
+               <audio ref={audioRef} loop />
+            </div>
+
             {/* Quick Resets (Only if Single Template Selected) */}
             {!isRunning && selectedTemplate.id === 'single' && (
                <div className="w-full mb-4">
                   <div className="font-headline font-bold text-[9px] uppercase tracking-widest text-on-surface-variant/50 mb-2 pl-1">Quick Custom Override</div>
                   <div className="grid grid-cols-5 gap-2">
-                    {recentMins.map((mins, i) => {
+                    {recentMins.map((mins: number, i: number) => {
                       const active = currentBlock.mins === mins && !showCustom;
                       return (
                         <button key={i} onClick={() => {

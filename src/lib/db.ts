@@ -19,6 +19,8 @@ export interface MultiYearGoal {
   description?: string;
   category?: 'CRAFT' | 'FINANCE' | 'HEALTH' | 'SOCIAL' | 'CHARACTER' | 'OTHER';
   targetYear: number;
+  targetAchievement?: string; // What exactly I'm looking to achieve
+  imageUrl?: string;         // Vision board picture
   status: 'active' | 'done' | 'at-risk';
   isPinned?: boolean;
   createdAt: number;
@@ -50,6 +52,7 @@ export interface QuarterlyGoal {
   annualGoalId?: number;
   status: 'active' | 'done' | 'at-risk';
   targetDate?: number;
+  imageUrl?: string;         // Optional image for quarterly objectives
   isPinned?: boolean;
   keyResults?: { id: string; title: string; done: boolean }[];
   completedAt?: number;
@@ -127,6 +130,22 @@ export interface RewardItem {
   updatedAt: number;
 }
 
+export interface SideQuest {
+  id?: number;
+  title: string;
+  targetCount: number;
+  currentCount: number;
+  icon?: string;
+  category?: string;
+  xpReward?: number;
+  quarterlyGoalId?: number; // Linked to a 90-day focus
+  annualGoalId?: number;    // Linked to a yearly horizon
+  completedAt?: number;
+  createdAt: number;
+  updatedAt: number;
+  userId?: string;
+}
+
 export interface DailyStreak {
   id?: number;
   date: string;              // "YYYY-MM-DD"
@@ -145,6 +164,8 @@ export class VectorDB extends Dexie {
   dailyTasks!:     Table<DailyTask>;
   rewards!:        Table<RewardItem>;
   dailyStreaks!:   Table<DailyStreak>;
+  sideQuests!:     Table<SideQuest>;
+  categories!:     Table<Category>;
 
   constructor(dbName = 'VectorOS') {
     super(dbName);
@@ -212,9 +233,89 @@ export class VectorDB extends Dexie {
       rewards:        '++id, isUnlocked, isUserDefined, requiredXp, milestoneId, createdAt',
       dailyStreaks:   '++id, date',
     });
+
+    // Version 13: Adds imageUrl and targetAchievement fields
+    this.version(13).stores({
+      sessions:       '++id, type, completedAt, taskId, updatedAt, userId',
+      multiYearGoals: '++id, status, targetYear, category, isPinned, updatedAt, userId',
+      annualGoals:    '++id, status, year, category, isPinned, multiYearGoalId, updatedAt, userId',
+      quarterlyGoals: '++id, status, annualGoalId, category, isPinned, completedAt, updatedAt, userId',
+      sprints:        '++id, quarterlyGoalId, annualGoalId, status, startDate, updatedAt, userId',
+      tasks:          '++id, status, priority, sprintId, quarterlyGoalId, annualGoalId, createdAt, completedAt, updatedAt, userId',
+      milestones:     '++id, annualGoalId, quarterlyGoalId, sprintId, status, targetDate, updatedAt, userId',
+      dailyTasks:     '++id, date, category, order, updatedAt, userId',
+      rewards:        '++id, isUnlocked, isUserDefined, requiredXp, milestoneId, createdAt',
+      dailyStreaks:   '++id, date',
+    });
+
+    // Version 14: Adds sideQuests table for counter-based goals
+    this.version(14).stores({
+      sessions:       '++id, type, completedAt, taskId, updatedAt, userId',
+      multiYearGoals: '++id, status, targetYear, category, isPinned, updatedAt, userId',
+      annualGoals:    '++id, status, year, category, isPinned, multiYearGoalId, updatedAt, userId',
+      quarterlyGoals: '++id, status, annualGoalId, category, isPinned, completedAt, updatedAt, userId',
+      sprints:        '++id, quarterlyGoalId, annualGoalId, status, startDate, updatedAt, userId',
+      tasks:          '++id, status, priority, sprintId, quarterlyGoalId, annualGoalId, createdAt, completedAt, updatedAt, userId',
+      milestones:     '++id, annualGoalId, quarterlyGoalId, sprintId, status, targetDate, updatedAt, userId',
+      dailyTasks:     '++id, date, category, order, updatedAt, userId',
+      rewards:        '++id, isUnlocked, isUserDefined, requiredXp, milestoneId, createdAt',
+      dailyStreaks:   '++id, date',
+      sideQuests:     '++id, title, targetCount, currentCount, updatedAt, userId',
+    });
+
+    // Version 15: Adds linkage for side quests to strategic goals
+    this.version(15).stores({
+      sessions:       '++id, type, completedAt, taskId, updatedAt, userId',
+      multiYearGoals: '++id, status, targetYear, category, isPinned, updatedAt, userId',
+      annualGoals:    '++id, status, year, category, isPinned, multiYearGoalId, updatedAt, userId',
+      quarterlyGoals: '++id, status, annualGoalId, category, isPinned, completedAt, updatedAt, userId',
+      sprints:        '++id, quarterlyGoalId, annualGoalId, status, startDate, updatedAt, userId',
+      tasks:          '++id, status, priority, sprintId, quarterlyGoalId, annualGoalId, createdAt, completedAt, updatedAt, userId',
+      milestones:     '++id, annualGoalId, quarterlyGoalId, sprintId, status, targetDate, updatedAt, userId',
+      dailyTasks:     '++id, date, category, order, updatedAt, userId',
+      rewards:        '++id, isUnlocked, isUserDefined, requiredXp, milestoneId, createdAt',
+      dailyStreaks:   '++id, date',
+      sideQuests:     '++id, title, quarterlyGoalId, annualGoalId, updatedAt, userId',
+    });
+
+    // Version 16: Adds categories table for dynamic pillar theming
+    this.version(16).stores({
+      sessions:       '++id, type, completedAt, taskId, updatedAt, userId',
+      multiYearGoals: '++id, status, targetYear, category, isPinned, updatedAt, userId',
+      annualGoals:    '++id, status, year, category, isPinned, multiYearGoalId, updatedAt, userId',
+      quarterlyGoals: '++id, status, annualGoalId, category, isPinned, completedAt, updatedAt, userId',
+      sprints:        '++id, quarterlyGoalId, annualGoalId, status, startDate, updatedAt, userId',
+      tasks:          '++id, status, priority, sprintId, quarterlyGoalId, annualGoalId, createdAt, completedAt, updatedAt, userId',
+      milestones:     '++id, annualGoalId, quarterlyGoalId, sprintId, status, targetDate, updatedAt, userId',
+      dailyTasks:     '++id, date, category, order, updatedAt, userId',
+      rewards:        '++id, isUnlocked, isUserDefined, requiredXp, milestoneId, createdAt',
+      dailyStreaks:   '++id, date',
+      sideQuests:     '++id, title, quarterlyGoalId, annualGoalId, updatedAt, userId',
+      categories:     'id, updatedAt',
+    });
   }
 }
 
+export interface Category {
+  id: string;            // e.g. 'CRAFT'
+  label: string;
+  icon: string;          // icon name
+  color: string;         // tailwind color class or hex
+  bg: string;
+  border: string;
+  glow: string;
+  updatedAt: number;
+}
+
 export const db = new VectorDB();
+
+// Default Pillars
+export const INITIAL_CATEGORIES: Category[] = [
+  { id: 'CRAFT',     label: 'CRAFT & SKILLS',    icon: 'Cpu',    color: 'text-primary',     bg: 'bg-primary/5',     border: 'border-primary/20',     glow: 'rgba(0,219,233,0.3)', updatedAt: Date.now() },
+  { id: 'FINANCE',   label: 'FINANCIAL FREEDOM', icon: 'DollarSign', color: 'text-emerald-400', bg: 'bg-emerald-400/5', border: 'border-emerald-400/20', glow: 'rgba(52,211,153,0.3)', updatedAt: Date.now() },
+  { id: 'HEALTH',    label: 'VITALITY & HEALTH', icon: 'Heart',      color: 'text-error',       bg: 'bg-error/5',       border: 'border-error/20',       glow: 'rgba(255,82,82,0.3)',  updatedAt: Date.now() },
+  { id: 'SOCIAL',    label: 'SOCIAL & FAMILY',   icon: 'Users',      color: 'text-[#b464ff]',   bg: 'bg-[#b464ff]/5',   border: 'border-[#b464ff]/20',   glow: 'rgba(180,100,255,0.3)', updatedAt: Date.now() },
+  { id: 'CHARACTER', label: 'CHARACTER & BRAND', icon: 'Shield',     color: 'text-[#FFBA38]',   bg: 'bg-[#FFBA38]/5',   border: 'border-[#FFBA38]/20',   glow: 'rgba(255,186,56,0.3)', updatedAt: Date.now() },
+];
 
 export const todayStr = () => new Date().toISOString().split('T')[0];

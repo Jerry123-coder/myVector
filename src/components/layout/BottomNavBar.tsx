@@ -1,4 +1,4 @@
-import { Timer, Rocket, Wallet, Users } from 'lucide-react';
+import { Timer, Rocket, Wallet, Users, BarChart3 } from 'lucide-react';
 import type { Route } from '../../App';
 
 interface BottomNavBarProps {
@@ -11,6 +11,7 @@ const tabs = [
   { id: 'goals' as Route, icon: Rocket, label: 'Goals' },
   { id: 'wallet' as Route, icon: Wallet, label: 'Wallet' },
   { id: 'people' as Route, icon: Users, label: 'People' },
+  { id: 'analytics' as Route, icon: BarChart3, label: 'Analytics' },
 ];
 
 export const BottomNavBar = ({ currentRoute, setRoute }: BottomNavBarProps) => {

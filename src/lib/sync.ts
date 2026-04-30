@@ -29,16 +29,16 @@ const syncTable = async (tableName: string, supabaseTable: string, user: User) =
   const table = (db as any)[tableName];
   if (!table) return;
 
-  // 1. Fetch local records that don't have a userId 
-  // (In a real sync we'd compare updatedAt, but this is a bootstrap sync)
+  // 1. Fetch local records that don't have a userId or belong to another user
   const localRecords = await table.filter((r: any) => !r.userId || r.userId !== user.id).toArray();
 
   if (localRecords.length > 0) {
     console.log(`Syncing ${localRecords.length} local records to ${supabaseTable}...`);
     
     const toUpload = localRecords.map((r: any) => {
+      const mapped = mapToSupabase(r);
       return {
-        ...mapToSupabase(r),
+        ...mapped,
         user_id: user.id,
       };
     });
@@ -63,16 +63,16 @@ const syncTable = async (tableName: string, supabaseTable: string, user: User) =
   if (!pullError && remoteRecords) {
     for (const remote of remoteRecords) {
       const mappedRemote = mapFromSupabase(remote);
+      
       // Check if we already have this record locally
-      // We check title, label, or date depending on the table
       const local = await table.filter((l: any) => 
         (l.title && l.title === mappedRemote.title) || 
         (l.label && l.label === mappedRemote.label) ||
-        (l.startTime && l.startTime === mappedRemote.startTime)
+        (l.startTime && l.startTime === mappedRemote.startTime) ||
+        (l.date && l.date === mappedRemote.date && l.label === mappedRemote.label)
       ).first();
 
       if (!local) {
-        // Use a placeholder ID or let Dexie generate one
         const { id: _remoteId, ...dataToSave } = mappedRemote as Record<string, unknown> & { id?: unknown };
         await table.add(dataToSave);
       }
@@ -83,10 +83,22 @@ const syncTable = async (tableName: string, supabaseTable: string, user: User) =
 export const syncAllData = async (user: User) => {
   console.log("Starting full sync...");
   try {
+    // Strategic Hierarchy
+    await syncTable('multiYearGoals', 'multi_year_goals', user);
     await syncTable('annualGoals', 'annual_goals', user);
     await syncTable('quarterlyGoals', 'quarterly_goals', user);
+    
+    // Tactics & Execution
+    await syncTable('sprints', 'sprints', user);
     await syncTable('tasks', 'tasks', user);
+    await syncTable('milestones', 'milestones', user);
+    await syncTable('dailyTasks', 'daily_tasks', user);
+    
+    // Metrics & Gamification
     await syncTable('sessions', 'sessions', user);
+    await syncTable('rewards', 'rewards', user);
+    await syncTable('dailyStreaks', 'daily_streaks', user);
+    
     console.log("Sync complete.");
   } catch (err) {
     console.error("Sync failed:", err);

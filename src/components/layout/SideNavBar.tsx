@@ -19,6 +19,7 @@ const navGroups = [
     items: [
       { id: 'wallet' as Route, icon: Wallet, label: 'Wallet' },
       { id: 'people' as Route, icon: Users, label: 'People' },
+      { id: 'analytics' as Route, icon: BarChart3, label: 'Analytics' },
     ],
   },
 ];

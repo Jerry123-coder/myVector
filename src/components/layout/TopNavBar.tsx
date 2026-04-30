@@ -34,6 +34,7 @@ export const TopNavBar = ({
   const routeLabel: Record<Route, string> = {
     timer: 'Focus',
     goals: 'Goals',
+    analytics: 'Analytics',
     wallet: 'Wallet',
     people: 'People',
     settings: 'Settings',
