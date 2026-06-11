@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { motion, AnimatePresence } from 'framer-motion';
 import { type Milestone, type SideQuest } from '../../lib/db';
@@ -52,14 +52,15 @@ export const MilestonesView = () => {
 
   // Data
   const milestones = useLiveQuery(() => db.milestones.orderBy('targetDate').toArray(), [isTestMode]) ?? [];
-  const rewards = useLiveQuery(() => db.rewards.orderBy('requiredXp').toArray(), [isTestMode]) ?? [];
-  const sideQuests = useLiveQuery(() => db.sideQuests.toArray(), [isTestMode]) ?? [];
+  const rewards    = useLiveQuery(() => db.rewards.toArray(), [isTestMode]) ?? [];
+  const sideQuests  = useLiveQuery(() => db.sideQuests.toArray(), [isTestMode]) ?? [];
 
   // Local State
   const [totalXp, setTotalXp] = useState(0);
   const [totalFocusSecs, setTotalFocusSecs] = useState(0);
   const [creatingMs, setCreatingMs] = useState(false);
   const [creatingSq, setCreatingSq] = useState(false);
+  const [creatingReward, setCreatingReward] = useState(false);
   
   // MS Form
   const [msTitle, setMsTitle] = useState('');
@@ -69,6 +70,13 @@ export const MilestonesView = () => {
   const [sqTitle, setSqTitle] = useState('');
   const [sqTarget, setSqTarget] = useState(10);
   const [sqIcon, setSqIcon] = useState('Sword');
+
+  // Reward Form
+  const [rewardTitle, setRewardTitle] = useState('');
+  const [rewardXp, setRewardXp] = useState(100);
+  const [rewardIcon, setRewardIcon] = useState('🎁');
+  const [rewardGateType, setRewardGateType] = useState<'xp' | 'milestone'>('xp');
+  const [rewardMilestoneLabel, setRewardMilestoneLabel] = useState('');
 
   useEffect(() => {
     void (async () => {
@@ -108,6 +116,23 @@ export const MilestonesView = () => {
     showToast('Side Quest Started', 'success');
   };
 
+  const createReward = async () => {
+    if (!rewardTitle.trim()) return;
+    if (rewardGateType === 'xp' && rewardXp <= 0) return;
+    if (rewardGateType === 'milestone' && !rewardMilestoneLabel.trim()) return;
+    await db.rewards.add({
+      title: rewardTitle.trim(),
+      icon: rewardIcon || '🎁',
+      ...(rewardGateType === 'xp' ? { requiredXp: rewardXp } : { milestoneLabel: rewardMilestoneLabel.trim().toUpperCase() }),
+      isUserDefined: true,
+      isUnlocked: false,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+    setRewardTitle(''); setRewardXp(100); setRewardIcon('🎁'); setRewardMilestoneLabel(''); setCreatingReward(false);
+    showToast('Reward Created', 'success');
+  };
+
   const updateSqCount = async (sq: SideQuest, delta: number) => {
     if (!sq.id) return;
     const newCount = Math.max(0, Math.min(sq.targetCount, sq.currentCount + delta));
@@ -132,12 +157,18 @@ export const MilestonesView = () => {
   };
 
   const redeemReward = async (id: number) => {
-    await db.rewards.update(id, { isUnlocked: true, updatedAt: Date.now() });
+    await db.rewards.update(id, { isUnlocked: true, unlockedAt: Date.now(), updatedAt: Date.now() });
     showToast('Reward Claimed!', 'success');
+  };
+
+  const unredeemReward = async (id: number) => {
+    await db.rewards.update(id, { isUnlocked: false, unlockedAt: undefined, updatedAt: Date.now() });
+    showToast('Reward reverted', 'info');
   };
 
   const deleteMilestone = async (id?: number) => { if (id && confirm('Delete this milestone?')) await db.milestones.delete(id); };
   const deleteSideQuest = async (id?: number) => { if (id && confirm('Abandon this quest?')) await db.sideQuests.delete(id); };
+  const deleteReward    = async (id?: number) => { if (id && confirm('Delete this reward?')) await db.rewards.delete(id); };
 
   const getIcon = (name?: string) => {
     switch(name) {
@@ -354,34 +385,115 @@ export const MilestonesView = () => {
 
          {/* ── RIGHT COLUMN: REWARDS ─────────────────────────────── */}
          <div className="lg:col-span-4">
-            <h3 className="font-headline font-black text-xl text-on-surface uppercase tracking-tight flex items-center gap-3 mb-8">
-               <Box size={20} className="text-[#ffba38]" /> Rewards
-            </h3>
-            <div className="space-y-4">
-               {rewards.map(r => {
-                  const isAvailable = (r.requiredXp ?? 0) <= totalXp;
-                  const isClaimed = r.isUnlocked;
-                  return (
-                     <div key={r.id} className={`p-4 rounded-[14px] border transition-all ${isClaimed ? 'bg-secondary/5 border-secondary/20' : isAvailable ? 'bg-[#ffba38]/10 border-[#ffba38]/40 shadow-lg' : 'bg-black/40 border-white/5 opacity-50'}`}>
-                        <div className="flex items-center gap-4">
-                           <div className="text-2xl">{isClaimed ? r.icon : isAvailable ? '🎁' : <Lock size={16} className="text-on-surface-variant/20" />}</div>
-                           <div className="flex-1 min-w-0">
-                              <h4 className={`text-[10px] font-black uppercase tracking-tight truncate ${isClaimed ? 'text-secondary' : 'text-on-surface'}`}>{r.title}</h4>
-                              <div className="flex justify-between items-center mt-1">
-                                 <span className="text-[7px] font-black text-on-surface-variant/40 uppercase tracking-widest">{isClaimed ? 'Claimed' : `${r.requiredXp} XP Required`}</span>
-                              </div>
-                           </div>
-                           {isAvailable && !isClaimed && (
-                              <button onClick={() => redeemReward(r.id!)} className="px-3 py-1.5 bg-[#ffba38] text-black rounded-lg font-headline font-black text-[8px] uppercase tracking-widest hover:scale-105 transition-all">Redeem</button>
-                           )}
+            <div className="flex items-center justify-between mb-8">
+               <h3 className="font-headline font-black text-xl text-on-surface uppercase tracking-tight flex items-center gap-3">
+                  <Box size={20} className="text-[#ffba38]" /> Rewards
+               </h3>
+               <button onClick={() => setCreatingReward(true)} 
+                       className="flex items-center gap-2 px-3 py-1.5 bg-[#ffba38]/20 text-[#ffba38] rounded-lg font-headline font-black text-[9px] uppercase tracking-widest hover:bg-[#ffba38]/30 active:scale-95 transition-all">
+                  <Plus size={14} /> Add
+               </button>
+            </div>
+
+            <AnimatePresence>
+               {creatingReward && (
+                  <motion.div 
+                     initial={{ opacity: 0, y: -10 }}
+                     animate={{ opacity: 1, y: 0 }}
+                     exit={{ opacity: 0, y: -10 }}
+                     className="mb-6 p-5 bg-[#0f1115] rounded-[14px] border border-[#ffba38]/20 shadow-xl"
+                  >
+                     <div className="flex flex-col gap-3">
+                        <input value={rewardTitle} onChange={e => setRewardTitle(e.target.value)} placeholder="Reward Name" 
+                               className="bg-black/40 rounded-lg px-3 py-2 font-headline font-black text-[10px] text-[#ffba38] uppercase border border-white/5 outline-none focus:border-[#ffba38]/40" />
+                        
+                        {/* Gate Type Toggle */}
+                        <div className="flex gap-2">
+                           <button onClick={() => setRewardGateType('xp')} className={`flex-1 py-2 rounded-lg font-headline font-black text-[9px] uppercase tracking-widest transition-all ${rewardGateType === 'xp' ? 'bg-[#ffba38] text-black' : 'bg-white/5 text-on-surface-variant/40 hover:bg-white/10'}`}>XP Gate</button>
+                           <button onClick={() => setRewardGateType('milestone')} className={`flex-1 py-2 rounded-lg font-headline font-black text-[9px] uppercase tracking-widest transition-all ${rewardGateType === 'milestone' ? 'bg-primary text-black' : 'bg-white/5 text-on-surface-variant/40 hover:bg-white/10'}`}>Milestone Gate</button>
                         </div>
-                        {!isClaimed && !isAvailable && (
-                           <div className="mt-3 h-1 w-full bg-black/40 rounded-full overflow-hidden">
-                              <div className="h-full bg-[#ffba38]/30" style={{ width: `${Math.min(100, (totalXp / (r.requiredXp || 1)) * 100)}%` }} />
+
+                        {rewardGateType === 'xp' ? (
+                           <div className="flex gap-2">
+                              <input type="number" value={rewardXp} onChange={e => setRewardXp(Number(e.target.value))} placeholder="Required XP" 
+                                     className="flex-1 bg-black/40 rounded-lg px-3 py-2 font-headline font-bold text-[10px] text-on-surface border border-white/5 outline-none focus:border-[#ffba38]/40" />
+                              <input value={rewardIcon} onChange={e => setRewardIcon(e.target.value)} placeholder="🎁"
+                                     className="w-14 bg-black/40 rounded-lg px-3 py-2 font-headline font-black text-[10px] text-center border border-white/5 outline-none" />
+                           </div>
+                        ) : (
+                           <div className="flex gap-2">
+                              <select value={rewardMilestoneLabel} onChange={e => setRewardMilestoneLabel(e.target.value)}
+                                      className="flex-1 bg-black/40 rounded-lg px-3 py-2 font-headline font-black text-[9px] uppercase text-primary border border-white/5 outline-none">
+                                 <option value="">Select milestone...</option>
+                                 {milestones.map(m => <option key={m.id} value={m.title}>{m.title}</option>)}
+                              </select>
+                              <input value={rewardIcon} onChange={e => setRewardIcon(e.target.value)} placeholder="🎁"
+                                     className="w-14 bg-black/40 rounded-lg px-3 py-2 font-headline font-black text-[10px] text-center border border-white/5 outline-none" />
                            </div>
                         )}
+
+                        <div className="flex gap-2 mt-1">
+                           <button onClick={createReward} className="flex-1 py-2 bg-[#ffba38] text-black rounded-lg font-headline font-black text-[9px] uppercase">Create</button>
+                           <button onClick={() => setCreatingReward(false)} className="px-4 py-2 bg-white/5 text-on-surface-variant/40 rounded-lg font-headline font-black text-[9px] uppercase">Cancel</button>
+                        </div>
                      </div>
-                  );
+                  </motion.div>
+               )}
+            </AnimatePresence>
+
+            <div className="space-y-4">
+               {[...rewards]
+                  .sort((a, b) => {
+                    if (a.isUnlocked !== b.isUnlocked) return a.isUnlocked ? 1 : -1;
+                    return (a.requiredXp ?? a.sideQuestThreshold ?? 9999) - (b.requiredXp ?? b.sideQuestThreshold ?? 9999);
+                  })
+                  .map(r => {
+                   const xpGated  = r.requiredXp != null && !r.milestoneLabel && !r.sideQuestLabel;
+                   const msGated  = !!r.milestoneLabel && !r.sideQuestLabel;
+                   const sqGated  = !!r.sideQuestLabel;
+                   const matchedSq = sqGated ? sideQuests.find(sq => sq.title === r.sideQuestLabel) : null;
+                   const msMatched = msGated ? milestones.find(m => m.title === r.milestoneLabel && m.status === 'done') : null;
+                   const isAvailable = xpGated
+                     ? (r.requiredXp ?? 0) <= totalXp
+                     : msGated ? !!msMatched
+                     : sqGated ? !!(matchedSq && matchedSq.currentCount >= (r.sideQuestThreshold ?? 0))
+                     : false;
+                   const isClaimed = r.isUnlocked;
+                   const progressPct = xpGated
+                     ? Math.min(100, (totalXp / (r.requiredXp || 1)) * 100)
+                     : sqGated && matchedSq ? Math.min(100, (matchedSq.currentCount / (r.sideQuestThreshold || 1)) * 100)
+                     : 0;
+                   const gateChip = r.sideQuestLabel
+                     ? `📈 ${matchedSq?.currentCount ?? 0}/${r.sideQuestThreshold} · ${r.sideQuestLabel}`
+                     : r.milestoneLabel ? `🏁 ${r.milestoneLabel}`
+                     : isClaimed ? 'Claimed' : `${r.requiredXp} XP`;
+                   return (
+                      <div key={r.id} className={`p-4 rounded-[14px] border transition-all ${isClaimed ? 'bg-secondary/5 border-secondary/20' : isAvailable ? 'bg-[#ffba38]/10 border-[#ffba38]/40 shadow-lg' : 'bg-black/40 border-white/5 opacity-50'}`}>
+                         <div className="flex items-center gap-4">
+                            <div className="text-2xl">{isClaimed ? r.icon : isAvailable ? '🎁' : <Lock size={16} className="text-on-surface-variant/20" />}</div>
+                            <div className="flex-1 min-w-0">
+                               <h4 className={`text-[10px] font-black uppercase tracking-tight truncate ${isClaimed ? 'text-secondary' : 'text-on-surface'}`}>{r.title}</h4>
+                               <span className={`mt-1 inline-block text-[7px] font-black uppercase tracking-widest ${(r.milestoneLabel || r.sideQuestLabel) ? `px-1.5 py-0.5 rounded border ${isClaimed ? 'text-secondary border-secondary/30' : isAvailable ? 'text-primary border-primary/30' : 'text-on-surface-variant/30 border-white/10'}` : 'text-on-surface-variant/40'}`}>
+                                  {gateChip}
+                               </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                               {isAvailable && !isClaimed && (
+                                  <button onClick={() => redeemReward(r.id!)} className="px-3 py-1.5 bg-[#ffba38] text-black rounded-lg font-headline font-black text-[8px] uppercase tracking-widest hover:scale-105 transition-all">Redeem</button>
+                               )}
+                               {isClaimed && (
+                                  <button onClick={() => unredeemReward(r.id!)} title="Undo claim" className="px-2 py-1 bg-white/5 text-on-surface-variant/40 hover:text-[#ffba38] border border-white/5 hover:border-[#ffba38]/30 rounded-lg font-headline font-black text-[7px] uppercase tracking-widest transition-all">Undo</button>
+                               )}
+                               <button onClick={() => deleteReward(r.id!)} className="w-6 h-6 flex items-center justify-center text-on-surface-variant/20 hover:text-error transition-all"><Trash2 size={12} /></button>
+                            </div>
+                         </div>
+                         {!isClaimed && !isAvailable && (xpGated || sqGated) && (
+                            <div className="mt-3 h-1 w-full bg-black/40 rounded-full overflow-hidden">
+                               <div className="h-full bg-[#ffba38]/40 transition-all" style={{ width: `${progressPct}%` }} />
+                            </div>
+                         )}
+                      </div>
+                   );
                })}
             </div>
          </div>

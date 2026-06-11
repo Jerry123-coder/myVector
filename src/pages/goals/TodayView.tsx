@@ -4,37 +4,25 @@ import { todayStr, type DailyTask, type Sprint, type Task } from '../../lib/db';
 import { useDb, type DbInstance } from '../../lib/DbContext';
 import {
   CheckCircle2, Plus, Trash2, Zap, Brain, Inbox, Star,
-  ChevronDown, Edit3, ChevronRight,
+  ChevronDown, Edit3, ChevronRight, Activity, BookOpen
 } from 'lucide-react';
 import { useToast } from '../../components/ToastContext';
+import { useXP, XP_WEIGHTS, isSunday } from '../../hooks/useXP';
 
 interface Props { activeSprint?: Sprint; }
 
-// ── XP weights ─────────────────────────────────────────
-const XP = { 'deep-work': 5, admin: 2 };
+// Deep Work XP is handled by Focus Timer (TimerView). Skill/Workout/Admin are toggled here.
+const XP = XP_WEIGHTS;
 
 // ── Streak helpers ──────────────────────────────────────
-async function computeStreak(database: DbInstance): Promise<number> {
-  const records = await database.dailyStreaks.orderBy('date').reverse().limit(365).toArray();
-  let streak = 0;
-  const today = todayStr();
-  let cursor = today;
-  for (const r of records) {
-    if (r.date !== cursor) break;
-    if (!r.allDone) break;
-    streak++;
-    const d = new Date(cursor);
-    d.setDate(d.getDate() - 1);
-    cursor = d.toISOString().split('T')[0];
-  }
-  return streak;
-}
 
 async function markStreakForToday(database: DbInstance, allDone: boolean) {
   const today = todayStr();
   const existing = await database.dailyStreaks.where('date').equals(today).first();
   if (existing?.id) {
-    await database.dailyStreaks.update(existing.id, { allDone, updatedAt: Date.now() });
+    if (existing.allDone !== allDone) {
+      await database.dailyStreaks.update(existing.id, { allDone, updatedAt: Date.now() });
+    }
   } else {
     await database.dailyStreaks.add({ date: today, allDone, updatedAt: Date.now() });
   }
@@ -56,34 +44,25 @@ export const TodayView = ({ activeSprint }: Props) => {
     [activeSprint?.id, isTestMode]
   ) ?? [];
 
-  const quarterlyGoalsDone = useLiveQuery(
-    () => db.quarterlyGoals.where('status').equals('done').toArray(),
-    [isTestMode]
-  ) ?? [];
+  const { xpToday, currentStreak, canLogRelationship, relationshipCheckinsDone } = useXP();
+  const todaySunday = isSunday(today);
 
-  const [streak, setStreak] = useState(0);
   const [showAdd, setShowAdd] = useState(false);
   const [label, setLabel] = useState('');
-  const [category, setCategory] = useState<'deep-work' | 'admin'>('deep-work');
+  const [category, setCategory] = useState<'deep-work' | 'skill' | 'workout' | 'admin'>('deep-work');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editLabel, setEditLabel] = useState('');
   const [showBacklog, setShowBacklog] = useState(false);
 
-  const deepWork = daily.filter(t => t.category === 'deep-work');
-  const admin    = daily.filter(t => t.category === 'admin');
+  const directives = daily.filter(t => t.category !== 'skill' && t.category !== 'workout');
+  const skillTask = daily.find(t => t.category === 'skill');
+  const workoutTask = daily.find(t => t.category === 'workout');
+  
   const doneCount = daily.filter(t => t.done).length;
   const totalCount = daily.length;
   const allDone = totalCount > 0 && doneCount === totalCount;
   
-  const qgDoneToday = quarterlyGoalsDone.filter(q => q.completedAt && new Date(q.completedAt).toISOString().split('T')[0] === today).length;
-  const earnedXp = daily.filter(t => t.done).reduce((s, t) => s + XP[t.category ?? 'admin'], 0) + (qgDoneToday * 20);
-  
   const pendingSprint = sprintTasks.filter(t => t.status !== 'done');
-
-  // Refresh streak on mount and when daily changes
-  useEffect(() => {
-    computeStreak(db).then(setStreak);
-  }, [db, daily.length, doneCount]);
 
   // Persist streak record whenever allDone changes
   useEffect(() => {
@@ -91,7 +70,7 @@ export const TodayView = ({ activeSprint }: Props) => {
   }, [db, allDone, totalCount]);
 
   const add = async () => {
-    if (daily.length >= 3) {
+    if (directives.length >= 3) {
       showToast('Maximum daily capacity reached (3)', 'error');
       return;
     }
@@ -106,7 +85,7 @@ export const TodayView = ({ activeSprint }: Props) => {
   };
 
   const pullTask = async (t: Task) => {
-    if (daily.length >= 3) {
+    if (directives.length >= 3) {
       showToast('Maximum daily capacity reached (3)', 'error');
       return;
     }
@@ -119,7 +98,7 @@ export const TodayView = ({ activeSprint }: Props) => {
   };
 
   const autoFill = async () => {
-    const slotsAvailable = 3 - daily.length;
+    const slotsAvailable = 3 - directives.length;
     if (slotsAvailable <= 0) return;
     
     const tasksToPull = pendingSprint.slice(0, slotsAvailable);
@@ -142,8 +121,22 @@ export const TodayView = ({ activeSprint }: Props) => {
 
   const toggle = async (task: DailyTask) => {
     if (task.id == null) return;
+    if (todaySunday) { showToast('Sunday is a zero-XP rest day', 'info'); return; }
     const isDone = !task.done;
     await db.dailyTasks.update(task.id, { done: isDone, updatedAt: Date.now() });
+    
+    // Add XP if completed (deep-work XP is handled by the Focus timer, not here)
+    if (isDone && task.category && task.category !== 'deep-work') {
+      const xpAmount = XP[task.category as keyof typeof XP] || 2;
+      await db.xpLogs.add({
+        date: today,
+        amount: xpAmount,
+        reason: task.label,
+        category: 'habit',
+        createdAt: Date.now()
+      });
+    }
+    
     if (isDone) showToast('Directive Accomplished', 'success');
   };
 
@@ -151,6 +144,35 @@ export const TodayView = ({ activeSprint }: Props) => {
     if (id != null) {
        await db.dailyTasks.delete(id);
        showToast('Directive Terminated', 'info');
+    }
+  };
+
+  const handleBonusXP = async (amount: number, reason: string, cat: 'bonus' | 'project' | 'relationship') => {
+    if (cat === 'relationship' && !canLogRelationship) {
+      showToast('Weekly relationship XP cap reached (10 XP / 5 check-ins)', 'error');
+      return;
+    }
+    await db.xpLogs.add({
+      date: today,
+      amount,
+      reason,
+      category: cat,
+      createdAt: Date.now()
+    });
+    showToast(`+${amount} XP: ${reason}`, 'success');
+  };
+
+  const toggleHabit = async (cat: 'skill' | 'workout', defaultLabel: string) => {
+    if (todaySunday) { showToast('Sunday is a zero-XP rest day', 'info'); return; }
+    const existing = daily.find(t => t.category === cat);
+    if (existing && existing.id) {
+       await toggle(existing);
+    } else {
+       const id = await db.dailyTasks.add({
+         date: today, label: defaultLabel, category: cat,
+         done: true, order: daily.length, updatedAt: Date.now()
+       });
+       await toggle({ id, done: false, date: today, label: defaultLabel, category: cat, order: daily.length, updatedAt: Date.now() } as DailyTask);
     }
   };
 
@@ -197,7 +219,7 @@ export const TodayView = ({ activeSprint }: Props) => {
 
       <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
         <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-lg bg-${accent}/10 text-${accent}/60 border border-${accent}/20`}>
-          +{XP[task.category ?? 'admin']} XP
+          +{XP[task.category as keyof typeof XP] ?? 2} XP
         </span>
         {!task.done && editingId !== task.id && (
           <button
@@ -217,62 +239,7 @@ export const TodayView = ({ activeSprint }: Props) => {
     </div>
   );
 
-  const CategorySection = ({
-    title, icon: Icon, tasks, accent, emptyMsg, xpTag,
-  }: {
-    title: string; icon: typeof Brain; tasks: DailyTask[];
-    accent: string; emptyMsg: string; xpTag: string;
-  }) => (
-    <div className="bg-[#1a1c22] rounded-2xl p-8 border border-white/5 shadow-xl relative overflow-hidden group">
-      <div className={`absolute top-0 right-0 w-32 h-32 bg-${accent}/5 blur-[60px] -translate-y-1/2 translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity`} />
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8 relative z-10">
-        <div className="flex items-center gap-4">
-          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center bg-${accent}/20 border border-${accent}/30 shadow-[0_0_20px_rgba(0,0,0,0.3)]`}>
-            <Icon size={20} className={`text-${accent}`} />
-          </div>
-          <div>
-            <h3 className="font-headline font-black text-lg text-on-surface uppercase tracking-tight">
-              {title}
-            </h3>
-            <p className="font-headline font-black text-[9px] text-on-surface-variant/30 uppercase tracking-[0.2em]">{xpTag}</p>
-          </div>
-        </div>
-        <div className="px-4 py-1.5 rounded-full border border-white/5 bg-black/40 shadow-inner">
-          <span className={`text-[10px] font-black uppercase tracking-widest text-${accent}`}>
-            {tasks.filter(t => t.done).length} / {tasks.length} SYNCED
-          </span>
-        </div>
-      </div>
-
-      {/* Progress bar */}
-      {tasks.length > 0 && (
-        <div className="h-2.5 w-full bg-black/40 rounded-full mb-8 overflow-hidden p-0.5 border border-white/5 relative z-10">
-          <div
-            className={tasks.every(t => t.done) ? 'progress-shimmer-green h-full rounded-full transition-all duration-1000' : 'h-full rounded-full transition-all duration-1000'}
-            style={{
-              width: `${tasks.length ? (tasks.filter(t => t.done).length / tasks.length) * 100 : 0}%`,
-              background: tasks.every(t => t.done) ? undefined : `var(--color-${accent})`,
-              boxShadow: tasks.every(t => t.done) ? undefined : `0 0 15px var(--color-${accent})40`,
-            }}
-          />
-        </div>
-      )}
-
-      {/* Task list */}
-      <div className="flex flex-col gap-3 relative z-10">
-        {tasks.length === 0 ? (
-          <div className="py-10 border-2 border-dashed border-white/5 rounded-2xl flex items-center justify-center">
-            <p className="text-[10px] text-on-surface-variant/20 font-headline font-black uppercase tracking-[0.3em]">
-              {emptyMsg}
-            </p>
-          </div>
-        ) : (
-          tasks.map(t => <TaskRow key={t.id} task={t} accent={accent} />)
-        )}
-      </div>
-    </div>
-  );
+  // Removed CategorySection
 
   return (
     <div className="max-w-3xl mx-auto w-full pb-24">
@@ -297,9 +264,9 @@ export const TodayView = ({ activeSprint }: Props) => {
         <div className="flex items-center gap-4 shrink-0 relative z-10">
           {/* Streak Counter */}
           <div className="flex flex-col items-center px-6 py-3 bg-black/40 rounded-2xl border border-white/5 shadow-inner min-w-[100px]">
-            <span className={`font-headline font-black text-3xl tabular-nums leading-none ${streak > 0 ? 'streak-glow' : 'text-on-surface-variant/20'}`}
-              style={{ color: streak > 0 ? '#ff9620' : undefined }}>
-               {streak}
+            <span className={`font-headline font-black text-3xl tabular-nums leading-none ${currentStreak > 0 ? 'streak-glow' : 'text-on-surface-variant/20'}`}
+              style={{ color: currentStreak > 0 ? '#ff9620' : undefined }}>
+               {currentStreak}
             </span>
             <span className="font-headline font-black text-[8px] uppercase tracking-widest text-[#ff9620]/60 mt-1.5">DRIVE_STREAK</span>
           </div>
@@ -307,7 +274,7 @@ export const TodayView = ({ activeSprint }: Props) => {
           {/* XP Today */}
           <div className="flex flex-col items-center px-6 py-3 bg-black/40 rounded-2xl border border-white/5 shadow-inner min-w-[100px]">
             <span className="font-headline font-black text-3xl tabular-nums text-secondary leading-none">
-              {earnedXp}
+              {xpToday}
             </span>
             <span className="font-headline font-black text-[8px] uppercase tracking-widest text-secondary/60 mt-1.5">GAINED_XP</span>
           </div>
@@ -325,7 +292,7 @@ export const TodayView = ({ activeSprint }: Props) => {
       </div>
 
       {/* ── Max Capacity Banner ────────────────────────────── */}
-      {daily.length >= 3 && (
+      {directives.length >= 3 && (
         <div className="bg-error/10 border border-error/30 rounded-2xl p-4 mb-8 flex items-center justify-center gap-3">
           <Zap size={18} className="text-error" />
           <span className="font-headline font-black text-xs uppercase tracking-widest text-error">
@@ -338,27 +305,27 @@ export const TodayView = ({ activeSprint }: Props) => {
       {showAdd ? (
         <div className="bg-[#1a1c22] rounded-2xl p-8 mb-8 shadow-xl border border-primary/20 animate-in fade-in slide-in-from-top-4 duration-500 relative overflow-hidden">
            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none" />
-          {/* Category Toggle */}
+          {/* Category Toggle (Simplified) */}
           <div className="flex gap-4 mb-6 relative z-10">
             <button
               onClick={() => setCategory('deep-work')}
-              className={`flex-1 flex items-center justify-center gap-3 px-4 py-4 rounded-2xl border font-headline font-black text-[11px] uppercase tracking-[0.2em] transition-all duration-300 ${
+              className={`flex-1 flex items-center justify-center gap-3 p-3 rounded-2xl border font-headline font-black text-[10px] uppercase tracking-[0.2em] transition-all duration-300 ${
                 category === 'deep-work'
-                  ? 'border-primary bg-primary text-black shadow-[0_0_30px_rgba(0,219,233,0.3)]'
+                  ? 'border-primary bg-primary/10 text-primary shadow-[0_0_30px_rgba(0,219,233,0.1)]'
                   : 'border-white/5 bg-white/5 text-on-surface-variant/40 hover:border-primary/40'
               }`}
             >
-              <Brain size={16} /> Deep_Cycle <span className="opacity-50 ml-1">+20 XP</span>
+              <Brain size={16} /> Deep Work <span className="opacity-50">+10 XP</span>
             </button>
             <button
               onClick={() => setCategory('admin')}
-              className={`flex-1 flex items-center justify-center gap-3 px-4 py-4 rounded-2xl border font-headline font-black text-[11px] uppercase tracking-[0.2em] transition-all duration-300 ${
+              className={`flex-1 flex items-center justify-center gap-3 p-3 rounded-2xl border font-headline font-black text-[10px] uppercase tracking-[0.2em] transition-all duration-300 ${
                 category === 'admin'
-                  ? 'border-tertiary-fixed-dim bg-tertiary-fixed-dim text-black shadow-[0_0_30px_rgba(151,107,255,0.3)]'
+                  ? 'border-tertiary-fixed-dim bg-tertiary-fixed-dim/10 text-tertiary-fixed-dim shadow-[0_0_30px_rgba(151,107,255,0.1)]'
                   : 'border-white/5 bg-white/5 text-on-surface-variant/40 hover:border-tertiary-fixed-dim/40'
               }`}
             >
-              <Inbox size={16} /> Admin_Protocol <span className="opacity-50 ml-1">+5 XP</span>
+              <Inbox size={16} /> Admin <span className="opacity-50">+2 XP</span>
             </button>
           </div>
 
@@ -395,7 +362,7 @@ export const TodayView = ({ activeSprint }: Props) => {
             </button>
           </div>
         </div>
-      ) : daily.length < 3 ? (
+      ) : directives.length < 3 ? (
         <div className="flex flex-col sm:flex-row gap-4 mb-8">
           <button
             onClick={() => setShowAdd(true)}
@@ -426,7 +393,7 @@ export const TodayView = ({ activeSprint }: Props) => {
       ) : null}
 
       {/* ── Sprint Backlog Pulldown (Moved Up) ────────────────────────── */}
-      {pendingSprint.length > 0 && daily.length < 3 && (
+      {pendingSprint.length > 0 && directives.length < 3 && (
         <div className="mb-8">
           <button
             onClick={() => setShowBacklog(!showBacklog)}
@@ -467,24 +434,92 @@ export const TodayView = ({ activeSprint }: Props) => {
         </div>
       )}
 
-      {/* ── Two-Column Category Sections ─────────────────── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <CategorySection
-          title="Deep Work"
-          icon={Brain}
-          tasks={deepWork}
-          accent="primary"
-          emptyMsg="No deep work blocks yet"
-          xpTag="+20 XP per task"
-        />
-        <CategorySection
-          title="Admin"
-          icon={Inbox}
-          tasks={admin}
-          accent="tertiary-fixed-dim"
-          emptyMsg="No admin tasks yet"
-          xpTag="+5 XP per task"
-        />
+      {/* ── Directives List ──────────────────────────────────── */}
+      {directives.length > 0 && (
+        <div className="bg-[#1a1c22] rounded-2xl p-6 mb-8 border border-white/5 shadow-xl">
+           <h3 className="font-headline font-black text-xs text-on-surface-variant/40 uppercase tracking-[0.3em] mb-4">Tactical Directives</h3>
+           <div className="flex flex-col gap-3">
+             {directives.map(t => <TaskRow key={t.id} task={t} accent={t.category === 'admin' ? 'tertiary-fixed-dim' : 'primary'} />)}
+           </div>
+        </div>
+      )}
+
+      {/* ── Daily Habits & XP Actions ────────────────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8">
+        
+        {/* Habits */}
+        <div className="bg-[#1a1c22] rounded-2xl p-6 border border-white/5 shadow-xl">
+           <h3 className="font-headline font-black text-xs text-on-surface-variant/40 uppercase tracking-[0.3em] mb-4">Core Habits</h3>
+           <div className="space-y-3">
+             <button
+               onClick={() => toggleHabit('skill', 'Skill Mastery (90m)')}
+               className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all ${
+                 skillTask?.done 
+                   ? 'bg-secondary/10 border-secondary/20 text-secondary shadow-[0_0_15px_rgba(0,228,117,0.1)]' 
+                   : 'bg-white/[0.03] border-white/5 hover:border-secondary/40 hover:bg-white/[0.06] text-on-surface'
+               }`}
+             >
+               <div className="flex items-center gap-3">
+                 <BookOpen size={16} />
+                 <span className="font-headline font-black text-[11px] uppercase tracking-widest">Skill Mastery (90m)</span>
+               </div>
+               {skillTask?.done ? <CheckCircle2 size={16} /> : <span className="text-[9px] font-black opacity-50">+5 XP</span>}
+             </button>
+             
+             <button
+               onClick={() => toggleHabit('workout', '20/20/200 Workout')}
+               className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all ${
+                 workoutTask?.done 
+                   ? 'bg-error/10 border-error/20 text-error shadow-[0_0_15px_rgba(255,82,82,0.1)]' 
+                   : 'bg-white/[0.03] border-white/5 hover:border-error/40 hover:bg-white/[0.06] text-on-surface'
+               }`}
+             >
+               <div className="flex items-center gap-3">
+                 <Activity size={16} />
+                 <span className="font-headline font-black text-[11px] uppercase tracking-widest">20/20/200 Workout</span>
+               </div>
+               {workoutTask?.done ? <CheckCircle2 size={16} /> : <span className="text-[9px] font-black opacity-50">+5 XP</span>}
+             </button>
+           </div>
+        </div>
+
+        {/* Manual Overrides */}
+        <div className="bg-[#1a1c22] rounded-2xl p-6 border border-white/5 shadow-xl">
+           <h3 className="font-headline font-black text-xs text-[#ffba38]/40 uppercase tracking-[0.3em] mb-4">Bonus XP Triggers</h3>
+           {todaySunday && (
+             <div className="mb-4 px-3 py-2 rounded-xl bg-white/5 border border-white/5 text-center">
+               <span className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant/40">☀️ Rest Day — Zero XP</span>
+             </div>
+           )}
+           <div className="space-y-3">
+             <button onClick={() => handleBonusXP(20, 'Project Deployment', 'project')}
+                disabled={todaySunday}
+                className="w-full p-4 rounded-xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.06] hover:border-[#ffba38]/40 disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center justify-between group">
+                <div className="flex items-center gap-3">
+                   <div className="w-8 h-8 rounded-lg bg-[#ffba38]/10 text-[#ffba38] flex items-center justify-center"><Zap size={14} /></div>
+                   <div className="text-left">
+                      <div className="font-headline font-black text-[11px] text-on-surface uppercase tracking-widest group-hover:text-[#ffba38] transition-colors">Deploy Project</div>
+                      <div className="text-[8px] text-on-surface-variant/40 uppercase">Production Ship</div>
+                   </div>
+                </div>
+                <span className="font-headline font-black text-[#ffba38] text-[10px]">+20 XP</span>
+             </button>
+             <button onClick={() => handleBonusXP(2, 'Relationship Check-in', 'relationship')}
+                disabled={todaySunday || !canLogRelationship}
+                className="w-full p-4 rounded-xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.06] hover:border-tertiary-fixed-dim/40 disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center justify-between group">
+                <div className="flex items-center gap-3">
+                   <div className="w-8 h-8 rounded-lg bg-tertiary-fixed-dim/10 text-tertiary-fixed-dim flex items-center justify-center"><Star size={14} /></div>
+                   <div className="text-left">
+                      <div className="font-headline font-black text-[11px] text-on-surface uppercase tracking-widest group-hover:text-tertiary-fixed-dim transition-colors">Relationship</div>
+                      <div className="text-[8px] text-on-surface-variant/40 uppercase">{relationshipCheckinsDone}/5 check-ins this week</div>
+                   </div>
+                </div>
+                <span className={`font-headline font-black text-[10px] ${canLogRelationship ? 'text-tertiary-fixed-dim' : 'text-on-surface-variant/30'}`}>
+                  {canLogRelationship ? '+2 XP' : 'CAPPED'}
+                </span>
+             </button>
+           </div>
+        </div>
       </div>
 
 
@@ -496,7 +531,7 @@ export const TodayView = ({ activeSprint }: Props) => {
           <Star size={32} className="text-secondary mx-auto mb-3" fill="currentColor" />
           <div className="font-headline font-black text-lg text-secondary uppercase tracking-widest">Total Victory</div>
           <div className="font-body text-sm text-secondary/70 mt-1">
-            +{earnedXp} XP earned · {streak > 1 ? `🔥 ${streak}-Day Streak Active` : 'Streak started!'}
+            +{xpToday} XP earned today · {currentStreak > 1 ? `🔥 ${currentStreak}-Day Streak Active` : 'Streak started!'}
           </div>
         </div>
       )}

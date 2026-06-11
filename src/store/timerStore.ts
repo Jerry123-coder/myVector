@@ -25,6 +25,7 @@ interface TimerStore {
   lastResumeTime: number | null;
   pausedRemainingMs: number | null;
 
+  setDuration: (durationSecs: number) => void;
   startTimer: (durationSecs: number, type?: 'focus' | 'break') => void;
   pauseTimer: () => void;
   resumeTimer: () => void;
@@ -120,6 +121,7 @@ export const useTimerStore = create<TimerStore>()(
       ambientTrackId: 'none',
 
       setAmbientTrack: (id: string) => set({ ambientTrackId: id }),
+      setDuration: (durationSecs: number) => set({ duration: durationSecs }),
 
       startTimer: (durationSecs, type = 'focus') => {
         const now = Date.now();
@@ -209,12 +211,17 @@ export const useTimerStore = create<TimerStore>()(
           updatedAt: now,
         });
 
-        // Mark task as done if linked AND it's a focus session
-        if (activeTask.id && sessionType === 'focus') {
-          if (activeTask.isDaily) {
-            db.dailyTasks.update(activeTask.id, { done: true, updatedAt: now });
-          } else {
-            db.tasks.update(activeTask.id, { status: 'done', completedAt: now, updatedAt: now });
+        // Award proportional XP for Deep Work (10 XP per 4 hours)
+        if (sessionType === 'focus' && actualSecs >= 60) {
+          const xpAmount = Number(((actualSecs / (4 * 3600)) * 10).toFixed(2));
+          if (xpAmount > 0.01) {
+            db.xpLogs.add({
+              date: new Date(now).toISOString().split('T')[0],
+              amount: xpAmount,
+              reason: `Deep Work: ${activeTask.label || 'Focus Session'}`,
+              category: 'habit',
+              createdAt: now,
+            });
           }
         }
       },

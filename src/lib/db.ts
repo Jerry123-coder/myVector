@@ -13,6 +13,14 @@ export interface FocusSession {
   updatedAt: number;
   userId?: string;
 }
+
+export interface FocusProtocol {
+  id?: string;
+  label: string;
+  desc: string;
+  blocks: { type: 'focus' | 'break'; mins: number; label: string }[];
+  updatedAt: number;
+}
 export interface MultiYearGoal {
   id?: number;
   title: string;
@@ -108,7 +116,7 @@ export interface DailyTask {
   id?: number;
   date: string;               // "YYYY-MM-DD"
   label: string;
-  category: 'deep-work' | 'admin'; // Deep Work vs Admin classification
+  category: 'deep-work' | 'admin' | 'skill' | 'workout' | string; // Core habit classifications
   taskId?: number;
   done: boolean;
   order: number;
@@ -118,14 +126,17 @@ export interface DailyTask {
 
 export interface RewardItem {
   id?: number;
-  title: string;             // e.g., "New Fragrance Purchase"
+  title: string;
   description?: string;
-  icon?: string;             // emoji or icon name
-  isUserDefined: boolean;    // false = preset / true = user-defined
-  isUnlocked: boolean;       // revealed once earned
+  icon?: string;
+  isUserDefined: boolean;
+  isUnlocked: boolean;
   unlockedAt?: number;
-  requiredXp?: number;       // XP level gate (optional)
-  milestoneId?: number;      // linked milestone gate (optional)
+  requiredXp?: number;          // XP level gate
+  milestoneLabel?: string;      // unlocks when milestone with this title is marked done
+  milestoneId?: number;
+  sideQuestLabel?: string;      // unlocks when SideQuest with this title reaches sideQuestThreshold
+  sideQuestThreshold?: number;  // currentCount must be >= this value
   createdAt: number;
   updatedAt: number;
 }
@@ -153,6 +164,16 @@ export interface DailyStreak {
   updatedAt: number;
 }
 
+export interface XPLog {
+  id?: number;
+  date: string;              // "YYYY-MM-DD"
+  amount: number;
+  reason: string;
+  category: 'habit' | 'bonus' | 'project' | 'relationship';
+  createdAt: number;
+  userId?: string;
+}
+
 export class VectorDB extends Dexie {
   sessions!:       Table<FocusSession>;
   multiYearGoals!: Table<MultiYearGoal>;
@@ -166,6 +187,8 @@ export class VectorDB extends Dexie {
   dailyStreaks!:   Table<DailyStreak>;
   sideQuests!:     Table<SideQuest>;
   categories!:     Table<Category>;
+  xpLogs!:         Table<XPLog>;
+  focusProtocols!: Table<FocusProtocol>;
 
   constructor(dbName = 'VectorOS') {
     super(dbName);
@@ -293,6 +316,41 @@ export class VectorDB extends Dexie {
       sideQuests:     '++id, title, quarterlyGoalId, annualGoalId, updatedAt, userId',
       categories:     'id, updatedAt',
     });
+
+    // Version 17: Adds xpLogs for progression economy
+    this.version(17).stores({
+      sessions:       '++id, type, completedAt, taskId, updatedAt, userId',
+      multiYearGoals: '++id, status, targetYear, category, isPinned, updatedAt, userId',
+      annualGoals:    '++id, status, year, category, isPinned, multiYearGoalId, updatedAt, userId',
+      quarterlyGoals: '++id, status, annualGoalId, category, isPinned, completedAt, updatedAt, userId',
+      sprints:        '++id, quarterlyGoalId, annualGoalId, status, startDate, updatedAt, userId',
+      tasks:          '++id, status, priority, sprintId, quarterlyGoalId, annualGoalId, createdAt, completedAt, updatedAt, userId',
+      milestones:     '++id, annualGoalId, quarterlyGoalId, sprintId, status, targetDate, updatedAt, userId',
+      dailyTasks:     '++id, date, category, order, updatedAt, userId',
+      rewards:        '++id, isUnlocked, isUserDefined, requiredXp, milestoneId, createdAt',
+      dailyStreaks:   '++id, date',
+      sideQuests:     '++id, title, quarterlyGoalId, annualGoalId, updatedAt, userId',
+      categories:     'id, updatedAt',
+      xpLogs:         '++id, date, category, createdAt, userId',
+    });
+
+    // Version 18: Adds focusProtocols
+    this.version(18).stores({
+      sessions:       '++id, type, completedAt, taskId, updatedAt, userId',
+      multiYearGoals: '++id, status, targetYear, category, isPinned, updatedAt, userId',
+      annualGoals:    '++id, status, year, category, isPinned, multiYearGoalId, updatedAt, userId',
+      quarterlyGoals: '++id, status, annualGoalId, category, isPinned, completedAt, updatedAt, userId',
+      sprints:        '++id, quarterlyGoalId, annualGoalId, status, startDate, updatedAt, userId',
+      tasks:          '++id, status, priority, sprintId, quarterlyGoalId, annualGoalId, createdAt, completedAt, updatedAt, userId',
+      milestones:     '++id, annualGoalId, quarterlyGoalId, sprintId, status, targetDate, updatedAt, userId',
+      dailyTasks:     '++id, date, category, order, updatedAt, userId',
+      rewards:        '++id, isUnlocked, isUserDefined, requiredXp, milestoneId, createdAt',
+      dailyStreaks:   '++id, date',
+      sideQuests:     '++id, title, quarterlyGoalId, annualGoalId, updatedAt, userId',
+      categories:     'id, updatedAt',
+      xpLogs:         '++id, date, category, createdAt, userId',
+      focusProtocols: 'id, updatedAt',
+    });
   }
 }
 
@@ -319,3 +377,111 @@ export const INITIAL_CATEGORIES: Category[] = [
 ];
 
 export const todayStr = () => new Date().toISOString().split('T')[0];
+
+export const INITIAL_PROTOCOLS: FocusProtocol[] = [
+  {
+    id: 'workout',
+    label: 'Workout Session',
+    desc: 'Daily physical training',
+    blocks: [{ type: 'focus', mins: 15, label: 'Intense Training' }],
+    updatedAt: Date.now()
+  },
+  {
+    id: 'study',
+    label: 'Study Session',
+    desc: 'Skill acquisition and mastery',
+    blocks: [
+      { type: 'focus', mins: 40, label: 'Deep Focus Alpha' },
+      { type: 'break', mins: 10, label: 'System Recovery' },
+      { type: 'focus', mins: 40, label: 'Deep Focus Beta' }
+    ],
+    updatedAt: Date.now()
+  },
+  {
+    id: 'deep-work',
+    label: 'Deep Work Block',
+    desc: 'Elite endurance training',
+    blocks: [
+      { type: 'focus', mins: 90, label: 'Deep Focus Alpha' },
+      { type: 'break', mins: 10, label: 'System Recovery' },
+      { type: 'focus', mins: 90, label: 'Deep Focus Beta' },
+      { type: 'break', mins: 10, label: 'System Recovery' },
+      { type: 'focus', mins: 40, label: 'Deep Focus Gamma' }
+    ],
+    updatedAt: Date.now()
+  },
+  {
+    id: 'weekly-review',
+    label: 'Weekly Review',
+    desc: 'Sunday system alignment',
+    blocks: [
+      { type: 'focus', mins: 60, label: 'Reflection & Journaling' },
+      { type: 'break', mins: 10, label: 'System Recovery' },
+      { type: 'focus', mins: 50, label: 'Strategy Reset' }
+    ],
+    updatedAt: Date.now()
+  }
+];
+
+export const INITIAL_REWARDS: RewardItem[] = [
+  // ─ XP-Gated Economy (13 tiers) ────────────────────────────────────────────────────
+  { title: 'Premium Coffee or Specialty Juice',         icon: '☕',   isUserDefined: false, isUnlocked: false, requiredXp: 50,   createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'LED Desk Lamp',                             icon: '💡',   isUserDefined: false, isUnlocked: false, requiredXp: 130,  createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'Fine Dining Experience #1',                 icon: '🍷',   isUserDefined: false, isUnlocked: false, requiredXp: 250,  createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'Niche Fragrance #1',                        icon: '✨',   isUserDefined: false, isUnlocked: false, requiredXp: 500,  createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'Pottery Class with a Friend',               icon: '🏺',   isUserDefined: false, isUnlocked: false, requiredXp: 750,  createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'New Tech Accessory / Productivity Tool',    icon: '🛠️',  isUserDefined: false, isUnlocked: false, requiredXp: 1000, createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'A Spa Session',                             icon: '🧖',   isUserDefined: false, isUnlocked: false, requiredXp: 1250, createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'Fine Dining Experience #2',                 icon: '🥩',   isUserDefined: false, isUnlocked: false, requiredXp: 1500, createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'Weekend Day Trip',                          icon: '🗺️',  isUserDefined: false, isUnlocked: false, requiredXp: 2000, createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'Signature Custom Tailored Piece',           icon: '🧻',   isUserDefined: false, isUnlocked: false, requiredXp: 2500, createdAt: Date.now(), updatedAt: Date.now() },
+  { title: "The 'Ace' Desk Peripheral Upgrade",         icon: '💻',   isUserDefined: false, isUnlocked: false, requiredXp: 3000, createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'Premium Leather Goods',                     icon: '💼',   isUserDefined: false, isUnlocked: false, requiredXp: 3500, createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'End-of-Year Wardrobe Signature Completion', icon: '👔',   isUserDefined: false, isUnlocked: false, requiredXp: 4000, createdAt: Date.now(), updatedAt: Date.now() },
+  // ─ Milestone-Gated (Binary Achievements) ──────────────────────────────────────────────
+  { title: "The 'Sanctuary' Couch",                     icon: '🛋️',  isUserDefined: false, isUnlocked: false, milestoneLabel: 'AWS SOLUTIONS ARCHITECT CERTIFIED',      createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'Adjustable Desk & Monitor Stand',           icon: '🖥️',  isUserDefined: false, isUnlocked: false, milestoneLabel: 'CERTIFIED KUBERNETES DEVELOPER (CKAD)',  createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'New MacBook Pro',                           icon: '💻',   isUserDefined: false, isUnlocked: false, milestoneLabel: 'FIRST $5K FREELANCING (TOTAL)',           createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'Fine Dining at Peduase Resort',             icon: '🍵',   isUserDefined: false, isUnlocked: false, milestoneLabel: 'FIRST $5K/MONTH CONTRACT',                createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'Fine Year-End Retreat (Volta Resort)',       icon: '🏝️',  isUserDefined: false, isUnlocked: false, milestoneLabel: '$5K/MO FOR 3 CONSECUTIVE MONTHS',        createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'Ankara Fit #2 & Continental Trip',          icon: '✈️',  isUserDefined: false, isUnlocked: false, milestoneLabel: '100 HOURS INVESTED IN A RELATIONSHIP',    createdAt: Date.now(), updatedAt: Date.now() },
+  // ─ Progress-Gated (SideQuest Checkpoints) ──────────────────────────────────────────────
+  // Project Deployment Track
+  { title: 'Getting Curtains for your Space',           icon: '🪟',   isUserDefined: false, isUnlocked: false, sideQuestLabel: 'PROJECT DEPLOYMENT TRACK', sideQuestThreshold: 5,   createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'LED Lighting Setup',                        icon: '💡',   isUserDefined: false, isUnlocked: false, sideQuestLabel: 'PROJECT DEPLOYMENT TRACK', sideQuestThreshold: 10,  createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'New Shoes #1',                              icon: '👟',   isUserDefined: false, isUnlocked: false, sideQuestLabel: 'PROJECT DEPLOYMENT TRACK', sideQuestThreshold: 15,  createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'Gaming / Ergonomic Chair',                  icon: '🪑',   isUserDefined: false, isUnlocked: false, sideQuestLabel: 'PROJECT DEPLOYMENT TRACK', sideQuestThreshold: 25,  createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'New Shoes #3 (Formal)',                     icon: '👞',   isUserDefined: false, isUnlocked: false, sideQuestLabel: 'PROJECT DEPLOYMENT TRACK', sideQuestThreshold: 50,  createdAt: Date.now(), updatedAt: Date.now() },
+  // Relationship Track
+  { title: 'Day at the Beach',                          icon: '🏖️',  isUserDefined: false, isUnlocked: false, sideQuestLabel: 'INTENTIONAL CHECK-UPS',    sideQuestThreshold: 100, createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'Pottery Class',                             icon: '🏺',   isUserDefined: false, isUnlocked: false, sideQuestLabel: 'QUALITY TIME WITH FRIENDS', sideQuestThreshold: 20,  createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'Spa Session',                               icon: '🧖',   isUserDefined: false, isUnlocked: false, sideQuestLabel: 'HOURS IN A RELATIONSHIP',  sideQuestThreshold: 50,  createdAt: Date.now(), updatedAt: Date.now() },
+];
+
+
+export const INITIAL_MILESTONES: Omit<Milestone, 'id'>[] = [
+  // Certifications
+  { title: 'AWS SOLUTIONS ARCHITECT CERTIFIED',     targetDate: new Date('2025-09-30').getTime(), status: 'upcoming', createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'CERTIFIED KUBERNETES DEVELOPER (CKAD)', targetDate: new Date('2025-12-31').getTime(), status: 'upcoming', createdAt: Date.now(), updatedAt: Date.now() },
+  // Financial
+  { title: 'FIRST  FREELANCING (TOTAL)',         targetDate: new Date('2025-10-31').getTime(), status: 'upcoming', createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'FIRST /MONTH CONTRACT',              targetDate: new Date('2025-10-31').getTime(), status: 'upcoming', createdAt: Date.now(), updatedAt: Date.now() },
+  { title: '/MO FOR 3 CONSECUTIVE MONTHS',       targetDate: new Date('2026-06-30').getTime(), status: 'upcoming', createdAt: Date.now(), updatedAt: Date.now() },
+  // Execution
+  { title: 'COMPLETE 100-DAY STREAK',               targetDate: new Date('2025-08-15').getTime(), status: 'upcoming', createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'COMPLETE 90-DAY WORKOUT STREAK',        targetDate: new Date('2025-07-31').getTime(), status: 'upcoming', createdAt: Date.now(), updatedAt: Date.now() },
+  // Relationship
+  { title: '100 HOURS INVESTED IN A RELATIONSHIP',  targetDate: new Date('2025-12-31').getTime(), status: 'upcoming', createdAt: Date.now(), updatedAt: Date.now() },
+  // Brand
+  { title: 'REACH 1K SOCIAL FOLLOWERS',             targetDate: new Date('2025-10-01').getTime(), status: 'upcoming', createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'LAND FIRST CLIENT',                     targetDate: new Date('2025-07-31').getTime(), status: 'upcoming', createdAt: Date.now(), updatedAt: Date.now() },
+];
+
+// Progress-based workstream trackers seeded as SideQuests
+export const INITIAL_SIDE_QUESTS: Omit<SideQuest, 'id'>[] = [
+  { title: 'PROJECT DEPLOYMENT TRACK',  targetCount: 50,  currentCount: 0, icon: 'Rocket',   createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'GOLANG PROJECTS',           targetCount: 5,   currentCount: 0, icon: 'Scroll',   createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'INTENTIONAL CHECK-UPS',     targetCount: 100, currentCount: 0, icon: 'Users',    createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'QUALITY TIME WITH FRIENDS', targetCount: 20,  currentCount: 0, icon: 'Dumbbell', createdAt: Date.now(), updatedAt: Date.now() },
+  { title: 'HOURS IN A RELATIONSHIP',   targetCount: 100, currentCount: 0, icon: 'Sword',    createdAt: Date.now(), updatedAt: Date.now() },
+];
