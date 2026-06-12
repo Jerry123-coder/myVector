@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { Zap, Target, Calendar, Trophy, type LucideIcon, FlaskConical } from 'lucide-react';
+import { Target, Calendar, Trophy, type LucideIcon, FlaskConical } from 'lucide-react';
 import { useDb } from '../lib/DbContext';
 import { SprintsView }        from './goals/SprintsView';
 import { GoalsHierarchyView } from './goals/GoalsHierarchyView';
@@ -24,20 +23,9 @@ const TABS: TabDef[] = [
 // Inner component uses context
 const GoalsViewInner = () => {
   const [tab, setTab] = useState<Tab>('sprints');
-  const { db, isTestMode } = useDb();
+  const { isTestMode } = useDb();
 
-  const activeSprint = useLiveQuery(
-    async () => {
-      const sprints = await db.sprints.where('status').notEqual('done').toArray();
-      const now = Date.now();
-      return sprints.find(s => s.status === 'active' && s.startDate <= now && s.endDate >= now) 
-          ?? sprints.find(s => s.startDate <= now && s.endDate >= now)
-          ?? sprints.find(s => s.status === 'active')
-          ?? sprints.find(s => s.status === 'planned')
-          ?? sprints[0];
-    },
-    [isTestMode]
-  );
+
 
   const activeTab = TABS.find(t => t.id === tab)!;
 
