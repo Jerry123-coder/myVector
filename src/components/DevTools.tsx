@@ -93,7 +93,7 @@ export const DevTools = () => {
           )}
 
           <div className="text-[8px] text-on-surface-variant/30 leading-relaxed pt-2 border-t border-surface-container-high">
-            DEV MODE // VECTOR_OS v1.2.0-dev
+            DEV MODE // VECTOR_OS v1.3.0-dev
           </div>
         </div>
       )}

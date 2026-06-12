@@ -42,7 +42,7 @@ export const SideNavBar = ({ currentRoute, setRoute }: SideNavBarProps) => {
           </span>
         </div>
         <div className="text-[10px] text-on-surface-variant/50 font-bold uppercase tracking-widest mt-1">
-          v1.2.0-stable
+          v1.3.0-stable
         </div>
       </div>
 

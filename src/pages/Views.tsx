@@ -7,7 +7,7 @@ import { useState } from 'react';
 const logs = [
   { time: '12:47:22', level: 'INFO',  msg: 'Focus session initialized — 25:00 duration' },
   { time: '12:22:01', level: 'SYS',   msg: 'Supabase client connected — latency 14ms' },
-  { time: '12:22:00', level: 'INFO',  msg: 'Vector OS v1.2.0-stable booted' },
+  { time: '12:22:00', level: 'INFO',  msg: 'Vector OS v1.3.0-stable booted' },
   { time: '12:21:59', level: 'DEBUG', msg: 'Service worker registered — offline ready' },
   { time: '12:21:58', level: 'INFO',  msg: 'IndexedDB initialized — schema v1' },
 ];
@@ -127,7 +127,7 @@ export const SettingsView = () => {
         <div className="grid grid-cols-2 gap-3">
           {[
             { icon: Activity, label: 'System',  val: 'Operational', color: 'text-secondary' },
-            { icon: Cpu,      label: 'Engine',  val: 'v1.2.0',      color: 'text-primary-fixed-dim' },
+            { icon: Cpu,      label: 'Engine',  val: 'v1.3.0',      color: 'text-primary-fixed-dim' },
             { icon: Terminal, label: 'Offline', val: 'Ready',       color: 'text-secondary' },
             { icon: Activity, label: 'Sync',    val: isAuthenticated ? '14ms' : 'N/A', color: 'text-tertiary-fixed-dim' },
           ].map(({ icon: Icon, label, val, color }) => (

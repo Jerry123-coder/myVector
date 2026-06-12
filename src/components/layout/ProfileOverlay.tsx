@@ -11,7 +11,7 @@ interface ProfileOverlayProps {
 const logs = [
   { time: '12:47:22', level: 'INFO',  msg: 'Focus session initialized — 25:00 duration' },
   { time: '12:22:01', level: 'SYS',   msg: 'Supabase client connected — latency 14ms' },
-  { time: '12:22:00', level: 'INFO',  msg: 'Vector OS v1.2.0-stable booted' },
+  { time: '12:22:00', level: 'INFO',  msg: 'Vector OS v1.3.0-stable booted' },
 ];
 
 const levelStyle: Record<string, string> = {
@@ -142,7 +142,7 @@ export const ProfileOverlay = ({ isOpen, onClose }: ProfileOverlayProps) => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
               { icon: Activity, label: 'Kernel',  val: 'Operational', color: 'text-secondary' },
-              { icon: Cpu,      label: 'Vector',  val: 'v1.2.0',      color: 'text-primary' },
+              { icon: Cpu,      label: 'Vector',  val: 'v1.3.0',      color: 'text-primary' },
               { icon: Terminal, label: 'Runtime', val: 'Browser_TS',  color: 'text-on-surface' },
               { icon: Cpu,      label: 'Memory',  val: 'IndxD_DB',    color: 'text-on-surface-variant' },
             ].map(({ icon: Icon, label, val, color }) => (
