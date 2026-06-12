@@ -1,12 +1,11 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
-import { X, Play, Pause, CheckCircle2, Music, Activity, Target, Clock, Plus, Link, ImportIcon, CloudDownload, CloudDownloadIcon, DownloadCloud, DownloadIcon, Import, Cloud } from 'lucide-react';
+import { X, Play, Pause, CheckCircle2, Music, Activity, Target, Clock, Plus, CloudDownload } from 'lucide-react';
 import { useTimerStore } from '../store/timerStore';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
 import { useToast } from '../components/ToastContext';
 import type { Route } from '../App';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useXP } from '../hooks/useXP';
 
 const AMBIENT_TRACKS = [
   { id: 'none',        label: 'Silence',       url: '' },
