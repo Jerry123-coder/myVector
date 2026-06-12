@@ -93,6 +93,7 @@ export interface Task {
   quarterlyGoalId?: number;
   annualGoalId?: number;
   order?: number; // Added for execution sequencing
+  dailyFocus?: boolean; // Flagged for focus of the day
   createdAt: number;
   completedAt?: number;
   updatedAt: number;

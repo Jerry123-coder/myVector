@@ -2,12 +2,11 @@ import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Zap, Target, Calendar, Trophy, type LucideIcon, FlaskConical } from 'lucide-react';
 import { useDb } from '../lib/DbContext';
-import { TodayView }          from './goals/TodayView';
 import { SprintsView }        from './goals/SprintsView';
 import { GoalsHierarchyView } from './goals/GoalsHierarchyView';
 import { MilestonesView }     from './goals/MilestonesView';
 
-type Tab = 'today' | 'sprints' | 'goals' | 'milestones';
+type Tab = 'sprints' | 'goals' | 'milestones';
 
 interface TabDef {
   id: Tab;
@@ -17,7 +16,6 @@ interface TabDef {
 }
 
 const TABS: TabDef[] = [
-  { id: 'today',      icon: Zap,      label: 'Today',      desc: 'Daily execution' },
   { id: 'sprints',    icon: Calendar, label: 'Sprints',    desc: 'Tactical phases' },
   { id: 'goals',      icon: Target,   label: 'Goals',      desc: 'Master roadmap'  },
   { id: 'milestones', icon: Trophy,   label: 'Milestones', desc: 'XP & rewards'    },
@@ -25,7 +23,7 @@ const TABS: TabDef[] = [
 
 // Inner component uses context
 const GoalsViewInner = () => {
-  const [tab, setTab] = useState<Tab>('today');
+  const [tab, setTab] = useState<Tab>('sprints');
   const { db, isTestMode } = useDb();
 
   const activeSprint = useLiveQuery(
@@ -132,7 +130,6 @@ const GoalsViewInner = () => {
       {/* key={isTestMode} forces full remount when switching DBs so live queries rebind */}
       <div className="flex-1 px-4 md:px-8 py-6" key={String(isTestMode)}>
         <div className="animate-in fade-in duration-200">
-          {tab === 'today'      && <TodayView activeSprint={activeSprint ?? undefined} />}
           {tab === 'sprints'    && <SprintsView />}
           {tab === 'goals'      && <GoalsHierarchyView />}
           {tab === 'milestones' && <MilestonesView />}

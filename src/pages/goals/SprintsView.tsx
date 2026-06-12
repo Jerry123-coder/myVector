@@ -5,7 +5,7 @@ import { type Task, type Sprint } from '../../lib/db';
 import { nowMs } from '../../lib/time';
 import {
   Plus, Trash2, Zap,
-  CalendarRange, Check, Target, GripVertical, LayoutGrid, ListTodo
+  CalendarRange, Check, Target, GripVertical, LayoutGrid, ListTodo, Lock
 } from 'lucide-react';
 import { DndContext, closestCorners, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -57,6 +57,7 @@ export const SprintsView = () => {
   const [newTaskLabel, setNewTaskLabel] = useState('');
   const [newTaskPri, setNewTaskPri]     = useState<Priority>('MED');
   const [taskViewMode, setTaskViewMode] = useState<'list' | 'kanban'>('list');
+  const [focusMode, setFocusMode]       = useState(false);
 
   const { showToast } = useToast();
   const roadmapRef = useRef<HTMLDivElement>(null);
@@ -74,6 +75,22 @@ export const SprintsView = () => {
       : Promise.resolve([] as Task[]),
     [selectedSprint?.id, isTestMode]
   ) ?? [];
+
+  const displayTasks = focusMode ? sprintTasks.filter(t => t.dailyFocus) : sprintTasks;
+
+  const toggleFocus = async (t: Task) => {
+    if (!t.id) return;
+    const isFocus = !t.dailyFocus;
+    if (isFocus) {
+      const activeFocusCount = sprintTasks.filter(task => task.dailyFocus).length;
+      if (activeFocusCount >= 3) {
+        showToast('Maximum daily focus capacity reached (3)', 'error');
+        return;
+      }
+    }
+    await db.tasks.update(t.id, { dailyFocus: isFocus, updatedAt: Date.now() });
+    showToast(isFocus ? 'Tactical focus node activated' : 'Focus flag removed', 'success');
+  };
 
   const doneTasks = sprintTasks.filter(t => t.status === 'done');
   const progress  = sprintTasks.length ? Math.round((doneTasks.length / sprintTasks.length) * 100) : 0;
