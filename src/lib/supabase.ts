@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 // These would normally be stored in .env files.
 // For now we setup the structure. When you have your Supabase project,
@@ -22,5 +22,4 @@ export const supabase = (supabaseUrl && supabaseAnonKey)
         }),
         upsert: async () => ({ error: null })
       })
-    } as any);
-
+    } as any as SupabaseClient);
