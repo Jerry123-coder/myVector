@@ -22,6 +22,7 @@ const tagTheme: Record<string, { bg: string; text: string; border: string }> = {
   'admin': { bg: 'bg-tertiary-fixed-dim/10', text: 'text-tertiary-fixed-dim', border: 'border-tertiary-fixed-dim/20' },
   'skill': { bg: 'bg-primary/10', text: 'text-primary', border: 'border-primary/20' },
   'workout': { bg: 'bg-error/10', text: 'text-error', border: 'border-error/20' },
+  'growth': { bg: 'bg-[#00e475]/10', text: 'text-[#00e475]', border: 'border-[#00e475]/20' },
 };
 
 const tagLabel: Record<string, string> = {
@@ -29,6 +30,7 @@ const tagLabel: Record<string, string> = {
   'admin': 'ADMIN',
   'skill': 'STUDY',
   'workout': 'WORKOUT',
+  'growth': 'GROWTH',
 };
 
 const getTagTheme = (tag: string) => {
@@ -77,12 +79,12 @@ export const TimerView = ({ setRoute }: TimerViewProps) => {
   const [taskInputValue, setTaskInputValue] = useState(() => {
     return activeTask && activeTask.id ? activeTask.label : '';
   });
-  const [newTaskCategory, setNewTaskCategory] = useState<'deep-work' | 'admin' | 'skill' | 'workout' | string>('deep-work');
+  const [newTaskCategory, setNewTaskCategory] = useState<'deep-work' | 'admin' | 'skill' | 'workout' | 'growth' | string>('deep-work');
   
   // Custom tags list
   const [availableTags, setAvailableTags] = useState<string[]>(() => {
     const saved = localStorage.getItem('vector_focus_tags');
-    return saved ? JSON.parse(saved) : ['deep-work', 'admin', 'skill', 'workout'];
+    return saved ? JSON.parse(saved) : ['deep-work', 'admin', 'skill', 'workout', 'growth'];
   });
   const [showNewTagInput, setShowNewTagInput] = useState(false);
   const [newTagName, setNewTagName] = useState('');
@@ -738,7 +740,7 @@ export const TimerView = ({ setRoute }: TimerViewProps) => {
                     <div className="space-y-2">
                       <div className="flex items-center gap-1.5 overflow-x-auto flex-nowrap w-full pb-2">
                         {availableTags.map(tag => {
-                          const isDefault = ['deep-work', 'admin', 'skill', 'workout'].includes(tag);
+                          const isDefault = ['deep-work', 'admin', 'skill', 'workout', 'growth'].includes(tag);
                           const isActive = newTaskCategory === tag;
                           return (
                             <button

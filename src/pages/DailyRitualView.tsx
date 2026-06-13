@@ -5,7 +5,7 @@ import { useToast } from '../components/ToastContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Flame, BookOpen, Brain, RefreshCw, ChevronDown, CheckCircle2,
-  Zap, Music, Volume2, VolumeX, Play, Pause, Clock, Calendar
+  Zap, Music, Volume2, VolumeX, Play, Pause, Clock, Calendar, TrendingUp
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -95,6 +95,21 @@ const WEEKDAY_HABITS: Habit[] = [
       { label: 'Deep Focus Beta',  mins: 90, type: 'focus' },
       { label: 'System Recovery',  mins: 10, type: 'break' },
       { label: 'Deep Focus Gamma', mins: 40, type: 'focus' },
+    ],
+  },
+  {
+    id: 'growth',
+    label: 'Growth Session',
+    subLabel: '15 min · +5 XP',
+    icon: TrendingUp,
+    xp: 5,
+    color: 'text-[#00e475]',
+    glow: 'rgba(0,228,117,0.25)',
+    borderColor: 'rgba(0,228,117,0.2)',
+    totalMins: 15,
+    weekdayOnly: true,
+    blocks: [
+      { label: 'Intense Training', mins: 15, type: 'focus' },
     ],
   },
 ];

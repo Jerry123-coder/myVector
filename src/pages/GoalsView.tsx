@@ -4,6 +4,7 @@ import { useDb } from '../lib/DbContext';
 import { SprintsView }        from './goals/SprintsView';
 import { GoalsHierarchyView } from './goals/GoalsHierarchyView';
 import { MilestonesView }     from './goals/MilestonesView';
+import type { Route } from '../App';
 
 type Tab = 'sprints' | 'goals' | 'milestones';
 
@@ -21,7 +22,7 @@ const TABS: TabDef[] = [
 ];
 
 // Inner component uses context
-const GoalsViewInner = () => {
+const GoalsViewInner = ({ setRoute }: { setRoute?: (r: Route) => void }) => {
   const [tab, setTab] = useState<Tab>('sprints');
   const { isTestMode } = useDb();
 
@@ -118,7 +119,7 @@ const GoalsViewInner = () => {
       {/* key={isTestMode} forces full remount when switching DBs so live queries rebind */}
       <div className="flex-1 px-4 md:px-8 py-6" key={String(isTestMode)}>
         <div className="animate-in fade-in duration-200">
-          {tab === 'sprints'    && <SprintsView />}
+          {tab === 'sprints'    && <SprintsView setRoute={setRoute} />}
           {tab === 'goals'      && <GoalsHierarchyView />}
           {tab === 'milestones' && <MilestonesView />}
         </div>

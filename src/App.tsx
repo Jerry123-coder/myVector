@@ -72,7 +72,7 @@ function App() {
           ) : (
             <>
               {currentRoute === 'timer'     && <TimerView setRoute={setCurrentRoute} />}
-              {currentRoute === 'goals'     && <GoalsView />}
+              {currentRoute === 'goals'     && <GoalsView setRoute={setCurrentRoute} />}
               {currentRoute === 'analytics' && <AnalyticsView setRoute={setCurrentRoute} />}
               {currentRoute === 'wallet'    && <WalletView />}
               {currentRoute === 'people'    && <PeopleView />}

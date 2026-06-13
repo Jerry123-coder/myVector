@@ -381,6 +381,13 @@ export const todayStr = () => new Date().toISOString().split('T')[0];
 
 export const INITIAL_PROTOCOLS: FocusProtocol[] = [
   {
+    id: 'growth',
+    label: 'Growth Session',
+    desc: 'Daily growth activities',
+    blocks: [{ type: 'focus', mins: 15, label: 'Intense Training' }],
+    updatedAt: Date.now()
+  },
+  {
     id: 'workout',
     label: 'Workout Session',
     desc: 'Daily physical training',
