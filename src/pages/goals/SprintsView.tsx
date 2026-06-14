@@ -201,6 +201,19 @@ export const SprintsView = ({ setRoute }: { setRoute?: (r: Route) => void }) => 
   const [carouselScrollLeft, setCarouselScrollLeft] = useState(0);
   const roadmapRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    if (sprints.length === 0) return;
+    const focusEpicIdStr = localStorage.getItem('focusEpicId');
+    if (focusEpicIdStr) {
+      const epicId = Number(focusEpicIdStr);
+      const epicSprints = sprints.filter(s => s.quarterlyGoalId === epicId);
+      if (epicSprints.length > 0) {
+        const activeOrFirst = epicSprints.find(s => s.status === 'active') ?? epicSprints[0];
+        setSelectedId(activeOrFirst.id);
+      }
+      localStorage.removeItem('focusEpicId');
+    }
+  }, [sprints]);
   const handleCarouselMouseDown = (e: React.MouseEvent) => {
     if (!roadmapRef.current) return;
     setIsCarouselDragging(true);
@@ -639,6 +652,13 @@ export const SprintsView = ({ setRoute }: { setRoute?: (r: Route) => void }) => 
                                              {isActive && <div className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_8px_#00dbe9] animate-pulse" />}
                                           </div>
                                           <div className="">
+                                             {sprint.quarterlyGoalId && (
+                                                <div className="mb-1.5">
+                                                   <span className="inline-block px-1.5 py-0.5 rounded-sm bg-primary/10 border border-primary/20 text-[8px] font-black uppercase tracking-widest text-primary">
+                                                      {quarterlyGoals.find(g => g.id === sprint.quarterlyGoalId)?.title || 'Linked Directive'}
+                                                   </span>
+                                                </div>
+                                             )}
                                              <span className="text-[9px] font-black text-on-surface-variant/30 uppercase tracking-[0.2em] block">Objective</span>
                                              <p className="text-[14px] uppercase font-headline font-semibold text-on-surface/90 line-clamp-3 leading-relaxed">
                                                 {sprint.objective || 'No objective specified.'}

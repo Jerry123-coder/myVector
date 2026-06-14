@@ -37,7 +37,7 @@ export const StrategyView = () => {
       updatedAt: Date.now()
     });
     setRapidInput('');
-    showToast('Strategic Anchor Set', 'success');
+    showToast('Goal Added', 'success');
   };
 
   const incrementQuest = async (quest: SideQuest) => {
@@ -73,18 +73,18 @@ export const StrategyView = () => {
               value={rapidInput}
               onChange={e => setRapidInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && addRapidAnchor()}
-              placeholder="Deploy new yearly anchor..."
+              placeholder="Add a new Yearly Goal..."
               className="flex-1 bg-transparent border-none outline-none font-headline font-black text-sm uppercase tracking-widest text-on-surface placeholder:text-on-surface-variant/20 px-2"
            />
            <button onClick={addRapidAnchor} className="px-6 py-3 bg-primary text-black rounded-[14px] font-headline font-black text-[9px] uppercase tracking-widest hover:brightness-110 transition-all">
-              Establish
+              Add Goal
            </button>
         </div>
       </div>
 
       <div className="flex items-center justify-between mb-8">
         <h2 className="text-[10px] font-black text-on-surface-variant/40 uppercase tracking-[0.4em] flex items-center gap-3">
-           <Globe size={14} className="text-primary" /> Yearly Horizon
+           <Globe size={14} className="text-primary" /> Yearly Goals
         </h2>
       </div>
 

@@ -17,8 +17,8 @@ interface TabDef {
 
 const TABS: TabDef[] = [
   { id: 'sprints',    icon: Calendar, label: 'Sprints',    desc: 'Tactical phases' },
-  { id: 'goals',      icon: Target,   label: 'Goals',      desc: 'Master roadmap'  },
-  { id: 'milestones', icon: Trophy,   label: 'Milestones', desc: 'XP & rewards'    },
+  { id: 'goals',      icon: Target,   label: 'Goals',      desc: 'All goals'  },
+  { id: 'milestones', icon: Trophy,   label: 'Milestones', desc: 'Achievements'    },
 ];
 
 // Inner component uses context
@@ -120,7 +120,7 @@ const GoalsViewInner = ({ setRoute }: { setRoute?: (r: Route) => void }) => {
       <div className="flex-1 px-4 md:px-8 py-6" key={String(isTestMode)}>
         <div className="animate-in fade-in duration-200">
           {tab === 'sprints'    && <SprintsView setRoute={setRoute} />}
-          {tab === 'goals'      && <GoalsHierarchyView />}
+          {tab === 'goals'      && <GoalsHierarchyView setTab={setTab} />}
           {tab === 'milestones' && <MilestonesView />}
         </div>
       </div>

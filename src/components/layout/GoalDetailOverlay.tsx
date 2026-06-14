@@ -75,6 +75,9 @@ export const GoalDetailOverlay = ({ goalId, type, onClose }: GoalDetailOverlayPr
     []
   );
 
+  const multiYearGoals = useLiveQuery(() => db.multiYearGoals.toArray(), []) ?? [];
+  const allAnnualGoals = useLiveQuery(() => db.annualGoals.toArray(), []) ?? [];
+
   const taskList = tasks ?? [];
   const subGoalList = subGoals ?? [];
   const milestoneList = milestones ?? [];
@@ -128,6 +131,21 @@ export const GoalDetailOverlay = ({ goalId, type, onClose }: GoalDetailOverlayPr
   const updateCategory = async (cat: AnnualGoal['category']) => {
     if (type !== 'annual' || !goalId) return;
     await db.annualGoals.update(goalId, { category: cat, updatedAt: Date.now() });
+  };
+
+  const updateDescription = async (desc: string) => {
+    if (!goalId || !type) return;
+    const table = type === 'annual' ? db.annualGoals : db.quarterlyGoals;
+    await table.update(goalId, { description: desc, updatedAt: Date.now() });
+  };
+
+  const updateParentLink = async (parentId: number | undefined) => {
+    if (!goalId || !type) return;
+    if (type === 'annual') {
+      await db.annualGoals.update(goalId, { multiYearGoalId: parentId, updatedAt: Date.now() });
+    } else {
+      await db.quarterlyGoals.update(goalId, { annualGoalId: parentId, updatedAt: Date.now() });
+    }
   };
 
   const linkQuest = async (questId: number) => {
@@ -208,9 +226,30 @@ export const GoalDetailOverlay = ({ goalId, type, onClose }: GoalDetailOverlayPr
               </div>
             )}
 
-            <p className="text-sm text-on-surface-variant/80 max-w-2xl font-body leading-relaxed">
-              {goal.description || "No tactical description provided for this directive."}
-            </p>
+            {/* Parent Link Selector */}
+            <div className="mb-6">
+              <label className="text-[10px] font-black text-on-surface-variant/40 uppercase tracking-widest block mb-2">
+                {type === 'annual' ? 'Link to Multi-Year Vision' : 'Link to Annual Anchor'}
+              </label>
+              <select 
+                value={type === 'annual' ? (goal as any).multiYearGoalId || '' : (goal as any).annualGoalId || ''}
+                onChange={(e) => updateParentLink(e.target.value ? Number(e.target.value) : undefined)}
+                className="w-full max-w-md bg-surface-container/30 border border-outline-variant/20 rounded-lg px-4 py-3 text-[11px] font-bold text-on-surface outline-none focus:border-primary/40 transition-all appearance-none"
+              >
+                <option value="">-- No Linked Parent --</option>
+                {type === 'annual' 
+                  ? multiYearGoals.map(mg => <option key={mg.id} value={mg.id}>{mg.title}</option>)
+                  : allAnnualGoals.map(ag => <option key={ag.id} value={ag.id}>{ag.title}</option>)
+                }
+              </select>
+            </div>
+
+            <textarea 
+              value={goal.description || ''}
+              onChange={(e) => updateDescription(e.target.value)}
+              placeholder="Tactical description or newline-separated checklist..."
+              className="w-full max-w-2xl bg-surface-container/10 text-sm text-on-surface-variant/80 font-body leading-relaxed border border-outline-variant/10 hover:border-outline-variant/20 focus:border-primary/30 rounded-xl p-4 outline-none resize-none min-h-[100px] transition-all"
+            />
           </div>
           <div className="flex flex-col items-end gap-4">
              <button onClick={onClose} className="p-3 rounded-2xl bg-surface-container-high hover:bg-surface-container-highest transition-colors">

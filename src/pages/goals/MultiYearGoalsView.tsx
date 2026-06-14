@@ -84,7 +84,7 @@ export const MultiYearGoalsView = () => {
           <h2 className="font-headline font-black text-xl text-on-surface uppercase tracking-tight flex items-center gap-3">
             <Globe size={20} className="text-primary" /> Core Vision
           </h2>
-          <p className="text-[10px] font-black text-on-surface-variant/40 uppercase tracking-[0.3em] mt-1">Strategic Horizons & Achievement Targets</p>
+          <p className="text-[10px] font-black text-on-surface-variant/40 uppercase tracking-[0.3em] mt-1">Long Term Goals</p>
         </div>
         {!creatingGoal && (
           <button onClick={() => setCreatingGoal(true)} 

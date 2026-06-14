@@ -158,7 +158,7 @@ export const GoalsTab = () => {
       <section className="mb-14">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h2 className="text-2xl font-headline font-black text-on-surface uppercase tracking-tighter mb-1">Master Directives</h2>
+            <h2 className="text-2xl font-headline font-black text-on-surface uppercase tracking-tighter mb-1">Yearly Goals</h2>
             <p className="text-[10px] text-on-surface-variant uppercase tracking-[0.3em] font-bold">Annual Macro-Objectives</p>
           </div>
           <button onClick={() => setCreatingAnnual(true)} className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary hover:bg-primary hover:text-black transition-all">
@@ -173,7 +173,7 @@ export const GoalsTab = () => {
               value={aTitle}
               onChange={e => setATitle(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && createAnnual()}
-              placeholder="Initialize Master Directive..."
+              placeholder="Add Yearly Goal..."
               className="w-full bg-transparent border-none outline-none text-xl font-headline font-black text-primary uppercase placeholder:text-primary/20 mb-4"
             />
             <div className="flex flex-wrap gap-2 mb-6">
@@ -214,7 +214,7 @@ export const GoalsTab = () => {
       <section>
         <div className="flex items-center justify-between mb-8 pt-8 border-t border-outline-variant/10">
           <div>
-            <h2 className="text-2xl font-headline font-black text-on-surface uppercase tracking-tighter mb-1">Tactical Targets</h2>
+            <h2 className="text-2xl font-headline font-black text-on-surface uppercase tracking-tighter mb-1">Quarterly Goals</h2>
             <p className="text-[10px] text-on-surface-variant uppercase tracking-[0.3em] font-bold">Quarterly Focus Windows</p>
           </div>
           <button onClick={() => setCreatingQ(true)} className="w-12 h-12 rounded-2xl bg-primary-fixed-dim/10 border border-primary-fixed-dim/20 flex items-center justify-center text-primary-fixed-dim hover:bg-primary-fixed-dim hover:text-black transition-all">
@@ -229,7 +229,7 @@ export const GoalsTab = () => {
                 autoFocus
                 value={qTitle}
                 onChange={e => setQTitle(e.target.value)}
-                placeholder="Initialize Tactical Target..."
+                placeholder="Add Quarterly Goal..."
                 className="w-full bg-transparent border-none outline-none text-lg font-headline font-black text-primary-fixed-dim uppercase placeholder:text-primary-fixed-dim/20"
               />
               <input 

@@ -6,14 +6,14 @@ import { CommandDashboard } from './CommandDashboard';
 import { Globe, Target, Shield, LayoutGrid, Terminal } from 'lucide-react';
 import { motion } from 'framer-motion';
 
-export const GoalsHierarchyView = () => {
+export const GoalsHierarchyView = ({ setTab }: { setTab?: (tab: 'sprints' | 'goals' | 'milestones') => void }) => {
   const [level, setLevel] = useState<'deck' | 'quarterly' | 'annual' | 'multi'>('deck');
 
   const TABS = [
-    { id: 'deck',      label: 'Command Deck',   icon: Terminal,   desc: 'Strategic Operational Overview' },
-    { id: 'quarterly', label: '90-Day Focus',   icon: Target,     desc: 'Tactical Execution Directives' },
-    { id: 'annual',    label: 'Yearly Horizon', icon: Shield,     desc: 'Core Strategic Anchors' },
-    { id: 'multi',     label: 'Core Vision',    icon: Globe,      desc: 'Ultimate Achievement Targets' }
+    { id: 'deck',      label: 'Dashboard',      icon: Terminal,   desc: 'Current Overview' },
+    { id: 'quarterly', label: 'Quarterly',      icon: Target,     desc: 'Quarterly Goals' },
+    { id: 'annual',    label: 'Yearly',         icon: Shield,     desc: 'Annual Goals' },
+    { id: 'multi',     label: 'Long Term',      icon: Globe,      desc: 'Big Picture Targets' }
   ] as const;
 
   return (
@@ -50,7 +50,7 @@ export const GoalsHierarchyView = () => {
       </div>
 
       <div className="animate-in fade-in slide-in-from-bottom-8 duration-700">
-        {level === 'deck'      && <CommandDashboard />}
+        {level === 'deck'      && <CommandDashboard setTab={setTab} />}
         {level === 'quarterly' && <QuarterlyGoalsView />}
         {level === 'annual'    && <AnnualGoalsView />}
         {level === 'multi'     && <MultiYearGoalsView />}

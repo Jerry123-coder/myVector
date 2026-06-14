@@ -7,6 +7,8 @@ import { useToast } from '../../components/ToastContext';
 import { nowMs } from '../../lib/time';
 import { StatusRibbon } from '../../components/StatusRibbon';
 import { motion, AnimatePresence } from 'framer-motion';
+import { GoalDetailOverlay } from '../../components/layout/GoalDetailOverlay';
+import { Edit3 } from 'lucide-react';
 
 export const QuarterlyGoalsView = () => {
   const { db, isTestMode } = useDb();
@@ -20,6 +22,7 @@ export const QuarterlyGoalsView = () => {
 
   const [rapidInput, setRapidInput] = useState('');
   const [expandedGoalId, setExpandedGoalId] = useState<number | null>(null);
+  const [selectedGoal, setSelectedGoal] = useState<{ id: number; type: 'quarterly' } | null>(null);
   const [krInputs, setKrInputs] = useState<Record<number, string>>({});
 
   const addRapidFocus = async () => {
@@ -34,13 +37,13 @@ export const QuarterlyGoalsView = () => {
       updatedAt: now
     });
     setRapidInput('');
-    showToast('Focus Established', 'success');
+    showToast('Goal Added', 'success');
   };
 
   const deleteGoal = async (id: number) => {
-    if (confirm("Decommission this objective?")) {
+    if (confirm("Delete this goal?")) {
       await db.quarterlyGoals.delete(id);
-      showToast('Objective Purged', 'info');
+      showToast('Goal Deleted', 'info');
     }
   };
 
@@ -101,20 +104,20 @@ export const QuarterlyGoalsView = () => {
               value={rapidInput}
               onChange={e => setRapidInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && addRapidFocus()}
-              placeholder="Initialize new 90-day focus area..."
+              placeholder="Add a new Quarterly Goal..."
               className="flex-1 bg-transparent border-none outline-none font-headline font-black text-sm uppercase tracking-widest text-on-surface placeholder:text-on-surface-variant/20 px-2"
            />
            <button onClick={addRapidFocus} className="px-6 py-3 bg-primary text-black rounded-[14px] font-headline font-black text-[9px] uppercase tracking-widest hover:brightness-110 active:scale-95 transition-all">
-              Initialize
+              Add Goal
            </button>
         </div>
       </div>
 
       <div className="flex items-center justify-between mb-8">
         <h2 className="text-[10px] font-black text-on-surface-variant/40 uppercase tracking-[0.4em] flex items-center gap-3">
-           <Target size={14} className="text-primary" /> Active Directives
+           <Target size={14} className="text-primary" /> Active Goals
         </h2>
-        <span className="text-[8px] font-black text-on-surface-variant/20 uppercase tracking-widest">{quarterlyGoals.length} Strategic Hubs</span>
+        <span className="text-[8px] font-black text-on-surface-variant/20 uppercase tracking-widest">{quarterlyGoals.length} Goals</span>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -189,6 +192,10 @@ export const QuarterlyGoalsView = () => {
                                    className={`w-10 h-10 flex items-center justify-center rounded-[14px] border transition-all ${isExpanded ? 'bg-primary text-black border-primary' : 'bg-white/5 border-white/5 text-on-surface-variant/40 hover:text-primary'}`}>
                               {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                            </button>
+                           <button onClick={() => setSelectedGoal({ id: qg.id!, type: 'quarterly' })}
+                                   className="w-10 h-10 flex items-center justify-center rounded-[14px] bg-primary/10 border border-primary/20 text-primary hover:bg-primary hover:text-black transition-all">
+                              <Edit3 size={16} />
+                           </button>
                            <button onClick={() => deleteGoal(qg.id!)} className="w-10 h-10 flex items-center justify-center rounded-[14px] bg-white/5 border border-white/5 text-on-surface-variant/20 hover:text-error transition-all">
                               <Trash2 size={16} />
                            </button>
@@ -238,24 +245,19 @@ export const QuarterlyGoalsView = () => {
                             {/* Linked Annual Anchor */}
                             <div className="space-y-4">
                                <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-secondary/60 flex items-center gap-2">
-                                  <Target size={12} /> Strategic Anchor
+                                  <Target size={12} /> Yearly Goal
                                </h4>
                                {linkedAnnual ? (
-                                  <div className="p-6 bg-black/40 rounded-[14px] border border-white/5">
-                                     <span className="text-[7px] font-black uppercase tracking-widest text-secondary/40 mb-2 block">Yearly Horizon</span>
-                                     <h5 className="font-headline font-black text-sm text-on-surface uppercase tracking-tight">{linkedAnnual.title}</h5>
-                                  </div>
+                                  <span className="text-[10px] font-headline font-bold text-on-surface truncate">{linkedAnnual.title}</span>
                                ) : (
-                                  <div className="py-12 text-center border border-dashed border-white/5 rounded-[14px] bg-black/20">
-                                     <p className="text-[8px] font-black text-on-surface-variant/10 uppercase tracking-widest">No Yearly Linkage</p>
-                                  </div>
+                                  <span className="text-[10px] font-bold text-on-surface-variant/30 italic">No Link</span>
                                )}
                             </div>
 
                             {/* Operational Tasks */}
                             <div className="space-y-4">
                                <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-[#ffba38]/60 flex items-center gap-2">
-                                  <ListTodo size={12} /> Task Pipeline
+                                  <ListTodo size={12} /> Tasks
                                </h4>
                                <div className="space-y-2 max-h-[200px] overflow-y-auto no-scrollbar pr-1">
                                   {qgTasks.map(t => (
@@ -282,6 +284,8 @@ export const QuarterlyGoalsView = () => {
           );
         })}
       </div>
+
+      <GoalDetailOverlay goalId={selectedGoal?.id ?? null} type={selectedGoal?.type ?? null} onClose={() => setSelectedGoal(null)} />
     </div>
   );
 };
