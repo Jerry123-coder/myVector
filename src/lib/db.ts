@@ -370,11 +370,11 @@ export const db = new VectorDB();
 
 // Default Pillars
 export const INITIAL_CATEGORIES: Category[] = [
-  { id: 'CRAFT',     label: 'CRAFT & SKILLS',    icon: 'Cpu',    color: 'text-primary',     bg: 'bg-primary/5',     border: 'border-primary/20',     glow: 'rgba(0,219,233,0.3)', updatedAt: Date.now() },
-  { id: 'FINANCE',   label: 'FINANCIAL FREEDOM', icon: 'DollarSign', color: 'text-emerald-400', bg: 'bg-emerald-400/5', border: 'border-emerald-400/20', glow: 'rgba(52,211,153,0.3)', updatedAt: Date.now() },
-  { id: 'HEALTH',    label: 'VITALITY & HEALTH', icon: 'Heart',      color: 'text-error',       bg: 'bg-error/5',       border: 'border-error/20',       glow: 'rgba(255,82,82,0.3)',  updatedAt: Date.now() },
-  { id: 'SOCIAL',    label: 'SOCIAL & FAMILY',   icon: 'Users',      color: 'text-[#b464ff]',   bg: 'bg-[#b464ff]/5',   border: 'border-[#b464ff]/20',   glow: 'rgba(180,100,255,0.3)', updatedAt: Date.now() },
-  { id: 'CHARACTER', label: 'CHARACTER & BRAND', icon: 'Shield',     color: 'text-[#FFBA38]',   bg: 'bg-[#FFBA38]/5',   border: 'border-[#FFBA38]/20',   glow: 'rgba(255,186,56,0.3)', updatedAt: Date.now() },
+  { id: 'HEALTH',        label: 'HEALTH',        icon: 'Heart',      color: 'text-error',       bg: 'bg-error/5',       border: 'border-error/20',       glow: 'rgba(255,82,82,0.3)',  updatedAt: Date.now() },
+  { id: 'WEALTH',        label: 'WEALTH',        icon: 'DollarSign', color: 'text-emerald-400', bg: 'bg-emerald-400/5', border: 'border-emerald-400/20', glow: 'rgba(52,211,153,0.3)', updatedAt: Date.now() },
+  { id: 'CRAFT',         label: 'CRAFT',         icon: 'Cpu',        color: 'text-primary',     bg: 'bg-primary/5',     border: 'border-primary/20',     glow: 'rgba(0,219,233,0.3)', updatedAt: Date.now() },
+  { id: 'RELATIONSHIPS', label: 'RELATIONSHIPS', icon: 'Users',      color: 'text-[#b464ff]',   bg: 'bg-[#b464ff]/5',   border: 'border-[#b464ff]/20',   glow: 'rgba(180,100,255,0.3)', updatedAt: Date.now() },
+  { id: 'IDENTITY',      label: 'IDENTITY',      icon: 'Shield',     color: 'text-[#FFBA38]',   bg: 'bg-[#FFBA38]/5',   border: 'border-[#FFBA38]/20',   glow: 'rgba(255,186,56,0.3)', updatedAt: Date.now() },
 ];
 
 export const todayStr = () => new Date().toISOString().split('T')[0];
